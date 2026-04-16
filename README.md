@@ -1,24 +1,49 @@
-# Bot po prodazhe santekhniki
+# Бот по продаже сантехники
 
-Proekt pod chat-bota, kotoryi:
-- khranit katalog santekhniki i reklamnye tovary;
-- raspoznayet intenty polzovatelya cherez ML;
-- podbiraet tovary iz kataloga;
-- otvechaet fallback-replikami;
-- mozhet byt podklyuchen k Telegram.
+Проект представляет собой чат-бота для подбора и продажи сантехники. Бот помогает пользователю выбрать товар по категории, бюджету и назначению, показывает характеристики и преимущества моделей, предлагает рекламные товары и может быть подключен к Telegram.
 
-## Struktura
+## Что умеет бот
 
-- `data/catalog/` - katalog tovarov i reklamnykh pozitsii
-- `data/intents/` - intenty, primery fraz i otvety
-- `data/dialogues/` - rezervnye/fallback otvety
-- `data/ads/` - reklamnyye scenarii po tovaram
-- `src/bot/core/` - obshchaya logika bota
-- `src/bot/ml/` - obuchenie i inference ML-modeli
-- `src/bot/services/` - rabota s katalogom i podborom
-- `src/bot/telegram/` - integratsiya s Telegram
-- `src/bot/utils/` - ochistka teksta i normalizatsiya
-- `models/` - sokhranennye modeli
-- `tests/` - testy dialogov, podbora i reklamy
-- `docs/` - dokumentatsiya i roadmap
+- показывает ассортимент сантехники из общего каталога;
+- распознает намерение пользователя по тексту сообщения;
+- подбирает товары по категории, задаче и бюджету;
+- рассказывает о цене, характеристиках и преимуществах товара;
+- использует запасные ответы для непредусмотренных сценариев;
+- поддерживает рекламные сценарии для приоритетных товаров;
+- может работать через Telegram-интерфейс.
 
+## Структура проекта
+
+- `data/catalog/` — каталог товаров в формате JSON
+- `data/intents/` — интенты, примеры пользовательских фраз и шаблоны ответов
+- `data/dialogues/` — запасные и fallback-ответы
+- `data/ads/` — рекламные сценарии для продвигаемых товаров
+- `src/bot/core/` — основная логика бота
+- `src/bot/ml/` — обучение и использование модели распознавания интентов
+- `src/bot/services/` — работа с каталогом и подбором товаров
+- `src/bot/telegram/` — интеграция с Telegram
+- `src/bot/utils/` — очистка, нормализация текста и обработка опечаток
+- `models/` — сохраненные ML-модели
+- `tests/` — тесты диалогов, рекомендаций и сценариев
+- `docs/` — документация и рабочие заметки
+
+## Основные данные проекта
+
+- `products.json` содержит полный каталог сантехники;
+- `intents.json` содержит интенты для обучения модели и базовых ответов;
+- `dialogues.txt` содержит запасные реплики бота;
+- `ad_scenarios.json` содержит рекламные сценарии минимум для трех товаров.
+
+## ML-часть
+
+Для распознавания интентов в проекте планируется использовать связку `TfidfVectorizer` и `LinearSVC`. Такой вариант подходит для учебного проекта: он достаточно простой, быстрый и хорошо работает на коротких пользовательских фразах.
+
+## Дальнейшая работа
+
+Следующие этапы развития проекта:
+
+- реализовать нормализацию текста и обработку опечаток;
+- обучить модель распознавания интентов;
+- реализовать подбор товаров из каталога;
+- подключить Telegram-бота;
+- протестировать диалоги, рекомендации и рекламные сценарии.
