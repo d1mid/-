@@ -24,7 +24,7 @@ def load_dialogue_pairs(dialogues_path: str | Path = DEFAULT_DIALOGUES_PATH) -> 
             if "%%" not in line:
                 continue
             question, answer = [part.strip(" -") for part in line.split("%%", maxsplit=1)]
-            normalized_question = normalize_text(question, vocabulary=vocabulary)
+            normalized_question = normalize_text(question, vocabulary=vocabulary, mode="soft")
             if normalized_question and answer and normalized_question not in seen_questions:
                 seen_questions.add(normalized_question)
                 pairs.append((normalized_question, answer))
@@ -38,7 +38,7 @@ def load_dialogue_pairs(dialogues_path: str | Path = DEFAULT_DIALOGUES_PATH) -> 
 
         question = lines[0].removeprefix("-").strip()
         answer = lines[1].removeprefix("-").strip()
-        normalized_question = normalize_text(question, vocabulary=vocabulary)
+        normalized_question = normalize_text(question, vocabulary=vocabulary, mode="soft")
         if normalized_question and question and answer and normalized_question not in seen_questions:
             seen_questions.add(normalized_question)
             pairs.append((normalized_question, answer))
@@ -50,7 +50,7 @@ def find_dialogue_answer(
     dialogues_path: str | Path = DEFAULT_DIALOGUES_PATH,
 ) -> str | None:
     vocabulary = build_domain_vocabulary()
-    normalized_replica = normalize_text(replica, vocabulary=vocabulary)
+    normalized_replica = normalize_text(replica, vocabulary=vocabulary, mode="soft")
     if not normalized_replica:
         return None
 

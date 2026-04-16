@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import random
 from pathlib import Path
+import re
 
 from src.bot.ml.predict import predict_intent
 from src.bot.services.catalog_service import (
@@ -32,6 +33,7 @@ class PlumbingBot:
     DIRECT_INTENT_PRIORITY = {
         "greeting",
         "goodbye",
+        "small_talk",
         "bot_capabilities",
         "ask_bot_identity",
         "request_recommendation",
@@ -169,6 +171,20 @@ class PlumbingBot:
         return "Могу предложить такой комплект:\n- " + "\n- ".join(format_product_brief(item) for item in unique_items[:3])
 
     @staticmethod
+    def _rule_based_intent(text: str) -> str | None:
+        lowered = text.lower().strip()
+
+        if re.search(r"\bкак (у тебя )?дела\b", lowered) or re.search(r"\bкак ты\b", lowered):
+            return "small_talk"
+        if re.search(r"\bкак настроение\b", lowered) or re.search(r"\bчто нового\b", lowered):
+            return "small_talk"
+        if re.search(r"\bчто ты умеешь\b", lowered) or re.search(r"\bчем ты можешь помочь\b", lowered):
+            return "bot_capabilities"
+        if re.search(r"\bты бот\b", lowered) or re.search(r"\bты кто\b", lowered) or re.search(r"\bкто ты\b", lowered):
+            return "ask_bot_identity"
+        return None
+
+    @staticmethod
     def _is_domain_intent(intent: str) -> bool:
         return intent in {
             "show_catalog",
@@ -198,10 +214,13 @@ class PlumbingBot:
 
     def reply(self, text: str) -> dict[str, str]:
         processed = preprocess_user_text(text)
+        forced_intent = self._rule_based_intent(text)
         try:
             intent = predict_intent(text)
         except Exception:
             intent = "fallback"
+        if forced_intent:
+            intent = forced_intent
 
         dialogue_answer = find_dialogue_answer(text)
         category_answer = self._handle_category_request(text)
@@ -264,7 +283,7 @@ class PlumbingBot:
             promo = self._handle_promo(intent)
             if promo:
                 answer = answer + "\n\n" + promo
-        elif intent in {"greeting", "goodbye"}:
+        elif intent in {"greeting", "goodbye", "small_talk"}:
             answer = self._random_response(intent)
         else:
             answer = None

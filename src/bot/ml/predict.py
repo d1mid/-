@@ -29,7 +29,7 @@ def predict_intent(text: str, model_path: str | Path = DEFAULT_MODEL_PATH) -> st
     classifier = bundle["classifier"]
 
     vocabulary = build_domain_vocabulary()
-    normalized = normalize_text(text, vocabulary=vocabulary)
+    normalized = normalize_text(text, vocabulary=vocabulary, mode="soft")
     return str(classifier.predict(vectorizer.transform([normalized]))[0])
 
 
@@ -39,7 +39,7 @@ def predict_intent_with_debug(text: str, model_path: str | Path = DEFAULT_MODEL_
     classifier = bundle["classifier"]
 
     vocabulary = build_domain_vocabulary()
-    normalized = normalize_text(text, vocabulary=vocabulary)
+    normalized = normalize_text(text, vocabulary=vocabulary, mode="soft")
     intent = str(classifier.predict(vectorizer.transform([normalized]))[0])
     return {
         "original_text": text,

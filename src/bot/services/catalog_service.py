@@ -83,10 +83,10 @@ def get_catalog_categories(products: list[dict]) -> list[str]:
 
 def find_category_in_query(query: str) -> str | None:
     lowered = query.lower()
-    normalized = normalize_text(query)
+    normalized = normalize_text(query, mode="catalog")
     for category, aliases in CATEGORY_ALIASES.items():
         for alias in aliases:
-            alias_normalized = normalize_text(alias)
+            alias_normalized = normalize_text(alias, mode="catalog")
             if alias in lowered or (alias_normalized and alias_normalized in normalized):
                 return category
     return None
@@ -94,10 +94,10 @@ def find_category_in_query(query: str) -> str | None:
 
 def find_subcategory_in_query(query: str) -> str | None:
     lowered = query.lower()
-    normalized = normalize_text(query)
+    normalized = normalize_text(query, mode="catalog")
     for subcategory, aliases in SUBCATEGORY_ALIASES.items():
         for alias in aliases:
-            alias_normalized = normalize_text(alias)
+            alias_normalized = normalize_text(alias, mode="catalog")
             if alias in lowered or (alias_normalized and alias_normalized in normalized):
                 return subcategory
     return None
@@ -134,11 +134,11 @@ def get_product_by_id(product_id: str, products: list[dict]) -> dict | None:
 
 
 def find_products_by_name(query: str, products: list[dict]) -> list[dict]:
-    normalized_query = normalize_text(query)
+    normalized_query = normalize_text(query, mode="catalog")
     matches: list[dict] = []
     for product in products:
         product_name = product.get("name", "")
-        normalized_name = normalize_text(product_name)
+        normalized_name = normalize_text(product_name, mode="catalog")
         if normalized_query and (
             normalized_query in normalized_name
             or normalized_name in normalized_query

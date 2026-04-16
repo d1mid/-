@@ -189,6 +189,8 @@ class TextProcessingResult:
     corrected_tokens: list[str]
     normalized_tokens: list[str]
     corrections: dict[str, str]
+    normalized_catalog: str = ""
+    normalized_catalog_tokens: list[str] = field(default_factory=list)
     entities: dict[str, list[str]] = field(default_factory=dict)
     sentiment_label: str = "neutral"
     sentiment_score: float = 0.0
@@ -488,6 +490,13 @@ def classify_topic(tokens: Iterable[str]) -> str:
     return best_topic
 
 
+def normalize_lemmas(lemmas: list[str], mode: str = "soft") -> list[str]:
+    prepared = [TOKEN_REPLACEMENTS.get(lemma, lemma) for lemma in lemmas if lemma]
+    if mode == "catalog":
+        return [lemma for lemma in prepared if lemma not in RUSSIAN_STOPWORDS]
+    return prepared
+
+
 def extract_entities(
     text: str,
     products_path: str | Path = DEFAULT_PRODUCTS_PATH,
@@ -503,11 +512,7 @@ def extract_entities(
     lowered = cleaned.lower()
     tokens = tokenize(cleaned)
     query_lemmas, _ = lemmatize_text(cleaned)
-    normalized_query_tokens = {
-        TOKEN_REPLACEMENTS.get(lemma, lemma)
-        for lemma in query_lemmas
-        if lemma and lemma not in RUSSIAN_STOPWORDS
-    }
+    normalized_query_tokens = set(normalize_lemmas(query_lemmas, mode="catalog"))
     entities["numbers"] = [token for token in tokens if token.isdigit()]
 
     products_path = Path(products_path)
@@ -522,11 +527,7 @@ def extract_entities(
                 if product_id and product_id in lowered:
                     entities["product_ids"].append(product.get("id"))
                 product_lemmas, _ = lemmatize_text(product_name)
-                normalized_product_tokens = {
-                    TOKEN_REPLACEMENTS.get(lemma, lemma)
-                    for lemma in product_lemmas
-                    if lemma and lemma not in RUSSIAN_STOPWORDS
-                }
+                normalized_product_tokens = set(normalize_lemmas(product_lemmas, mode="catalog"))
 
                 if product_name and product_name in lowered:
                     entities["product_names"].append(product.get("name"))
@@ -541,8 +542,10 @@ def extract_entities(
     return entities
 
 
-def normalize_text(text: str, vocabulary: Iterable[str] | None = None) -> str:
+def normalize_text(text: str, vocabulary: Iterable[str] | None = None, mode: str = "soft") -> str:
     result = preprocess_user_text(text, vocabulary=vocabulary)
+    if mode == "catalog":
+        return result.normalized_catalog
     return result.normalized
 
 
@@ -558,14 +561,11 @@ def preprocess_user_text(text: str, vocabulary: Iterable[str] | None = None) -> 
 
     corrected_tokens = tokenize(corrected)
     lemmas, natasha_used = lemmatize_text(corrected)
-    normalized_tokens = [
-        TOKEN_REPLACEMENTS.get(lemma, lemma)
-        for lemma in lemmas
-        if lemma and lemma not in RUSSIAN_STOPWORDS
-    ]
+    normalized_tokens = normalize_lemmas(lemmas, mode="soft")
+    normalized_catalog_tokens = normalize_lemmas(lemmas, mode="catalog")
 
     sentiment_label, sentiment_score = analyze_sentiment(normalized_tokens)
-    topic = classify_topic(normalized_tokens)
+    topic = classify_topic(normalized_catalog_tokens)
     entities = extract_entities(corrected)
 
     return TextProcessingResult(
@@ -573,9 +573,11 @@ def preprocess_user_text(text: str, vocabulary: Iterable[str] | None = None) -> 
         cleaned=cleaned,
         corrected=corrected,
         normalized=" ".join(normalized_tokens),
+        normalized_catalog=" ".join(normalized_catalog_tokens),
         original_tokens=original_tokens,
         corrected_tokens=corrected_tokens,
         normalized_tokens=normalized_tokens,
+        normalized_catalog_tokens=normalized_catalog_tokens,
         corrections=corrections,
         entities=entities,
         sentiment_label=sentiment_label,

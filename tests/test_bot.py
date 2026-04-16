@@ -56,6 +56,13 @@ def test_bot_handles_complete_set_intent() -> None:
     assert "комплект" in result["answer"].lower()
 
 
+def test_bot_handles_small_talk() -> None:
+    bot = PlumbingBot()
+    result = bot.reply("Как у тебя дела?")
+    assert result["intent"] == "small_talk"
+    assert "хорош" in result["answer"].lower() or "спасибо" in result["answer"].lower()
+
+
 def test_bot_handles_category_request_for_installation() -> None:
     bot = PlumbingBot()
     result = bot.reply("что есть из систем монтажа")

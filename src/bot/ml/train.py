@@ -33,7 +33,7 @@ def load_intent_dataset(intents_path: str | Path = DEFAULT_INTENTS_PATH) -> tupl
     for intent in data.get("intents", []):
         intent_name = intent["intent"]
         for example in intent.get("examples", []):
-            texts.append(normalize_text(example, vocabulary=vocabulary))
+            texts.append(normalize_text(example, vocabulary=vocabulary, mode="soft"))
             labels.append(intent_name)
     return texts, labels
 

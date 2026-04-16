@@ -18,7 +18,7 @@ def test_levenshtein_distance_works_for_typo() -> None:
 
 def test_normalize_text_corrects_typos_with_domain_vocabulary() -> None:
     vocabulary = build_domain_vocabulary()
-    normalized = normalize_text("Нужен смиситель для кухне", vocabulary=vocabulary)
+    normalized = normalize_text("Нужен смиситель для кухне", vocabulary=vocabulary, mode="catalog")
     assert "смеситель" in normalized
     assert "кухня" in normalized
 
@@ -49,3 +49,12 @@ def test_preprocess_user_text_extracts_topic_and_entities() -> None:
 
 def test_natasha_flag_is_boolean() -> None:
     assert isinstance(natasha_available(), bool)
+
+
+def test_soft_normalization_keeps_small_talk_meaning_better() -> None:
+    vocabulary = build_domain_vocabulary()
+    soft = normalize_text("Как у тебя дела?", vocabulary=vocabulary, mode="soft")
+    catalog = normalize_text("Как у тебя дела?", vocabulary=vocabulary, mode="catalog")
+
+    assert "дело" in soft
+    assert len(soft.split()) >= len(catalog.split())
