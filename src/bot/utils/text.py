@@ -257,16 +257,19 @@ def _natasha_pipeline():
         return None
 
     if not hasattr(_natasha_pipeline, "_cache"):
-        embedding = NewsEmbedding()
-        setattr(
-            _natasha_pipeline,
-            "_cache",
-            {
-                "segmenter": Segmenter(),
-                "morph_tagger": NewsMorphTagger(embedding),
-                "morph_vocab": MorphVocab(),
-            },
-        )
+        try:
+            embedding = NewsEmbedding()
+            setattr(
+                _natasha_pipeline,
+                "_cache",
+                {
+                    "segmenter": Segmenter(),
+                    "morph_tagger": NewsMorphTagger(embedding),
+                    "morph_vocab": MorphVocab(),
+                },
+            )
+        except Exception:  # pragma: no cover - environment-dependent fallback
+            setattr(_natasha_pipeline, "_cache", None)
     return getattr(_natasha_pipeline, "_cache")
 
 

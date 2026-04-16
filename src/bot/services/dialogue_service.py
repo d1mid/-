@@ -14,11 +14,23 @@ def load_dialogue_pairs(dialogues_path: str | Path = DEFAULT_DIALOGUES_PATH) -> 
     if not content:
         return []
 
-    chunks = [chunk.strip() for chunk in content.split("\n\n") if chunk.strip()]
     pairs: list[tuple[str, str]] = []
     seen_questions: set[str] = set()
     vocabulary = build_domain_vocabulary()
 
+    if "%%" in content:
+        lines = [line.strip() for line in content.splitlines() if line.strip()]
+        for line in lines:
+            if "%%" not in line:
+                continue
+            question, answer = [part.strip(" -") for part in line.split("%%", maxsplit=1)]
+            normalized_question = normalize_text(question, vocabulary=vocabulary)
+            if normalized_question and answer and normalized_question not in seen_questions:
+                seen_questions.add(normalized_question)
+                pairs.append((normalized_question, answer))
+        return pairs
+
+    chunks = [chunk.strip() for chunk in content.split("\n\n") if chunk.strip()]
     for chunk in chunks:
         lines = [line.strip() for line in chunk.splitlines() if line.strip()]
         if len(lines) < 2:
@@ -27,7 +39,7 @@ def load_dialogue_pairs(dialogues_path: str | Path = DEFAULT_DIALOGUES_PATH) -> 
         question = lines[0].removeprefix("-").strip()
         answer = lines[1].removeprefix("-").strip()
         normalized_question = normalize_text(question, vocabulary=vocabulary)
-        if normalized_question and normalized_question not in seen_questions:
+        if normalized_question and question and answer and normalized_question not in seen_questions:
             seen_questions.add(normalized_question)
             pairs.append((normalized_question, answer))
     return pairs

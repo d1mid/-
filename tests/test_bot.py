@@ -1,0 +1,56 @@
+from src.bot.core.bot import PlumbingBot
+
+
+def test_bot_handles_catalog_request() -> None:
+    bot = PlumbingBot()
+    result = bot.reply("покажи каталог")
+    assert result["intent"] == "show_catalog"
+    assert "категории" in result["answer"].lower() or "каталоге" in result["answer"].lower()
+
+
+def test_bot_handles_budget_selection() -> None:
+    bot = PlumbingBot()
+    result = bot.reply("что есть до 5000 рублей")
+    assert result["intent"] == "selection_by_budget"
+    assert "5000" in result["answer"] or "руб" in result["answer"].lower()
+
+
+def test_bot_handles_product_price() -> None:
+    bot = PlumbingBot()
+    result = bot.reply("сколько стоит AquaMix ProFilter K-500")
+    assert result["intent"] == "ask_price"
+    assert "9490" in result["answer"] or "руб" in result["answer"].lower()
+
+
+def test_bot_handles_product_characteristics() -> None:
+    bot = PlumbingBot()
+    result = bot.reply("расскажи подробнее про AquaMix RainTherm S-900")
+    assert result["intent"] in {"ask_characteristics", "select_shower_system"}
+    assert "характерист" in result["answer"].lower() or "термостат" in result["answer"].lower()
+
+
+def test_bot_uses_dialogue_answer_for_non_catalog_phrase() -> None:
+    bot = PlumbingBot()
+    result = bot.reply("ты бот")
+    assert result["answer"]
+
+
+def test_bot_handles_identity_intent() -> None:
+    bot = PlumbingBot()
+    result = bot.reply("ты бот")
+    assert result["intent"] == "ask_bot_identity"
+    assert "бот" in result["answer"].lower() or "консультант" in result["answer"].lower()
+
+
+def test_bot_handles_capabilities_intent() -> None:
+    bot = PlumbingBot()
+    result = bot.reply("что ты умеешь")
+    assert result["intent"] == "bot_capabilities"
+    assert "могу" in result["answer"].lower() or "помога" in result["answer"].lower()
+
+
+def test_bot_handles_complete_set_intent() -> None:
+    bot = PlumbingBot()
+    result = bot.reply("нужен комплект для ванной")
+    assert result["intent"] == "select_complete_set"
+    assert "комплект" in result["answer"].lower()
