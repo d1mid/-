@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+logs/
+models/*.pkl
+models/*.joblib
+.pytest_cache/
+
