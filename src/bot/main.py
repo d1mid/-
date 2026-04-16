@@ -1,7 +1,16 @@
+from __future__ import annotations
+
+import sys
+
 from src.bot.core.bot import PlumbingBot
+from src.bot.telegram.handler import run_telegram_bot
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "--telegram":
+        run_telegram_bot()
+        return
+
     bot = PlumbingBot()
     print("Бот по сантехнике запущен. Для выхода введите пустую строку.")
 

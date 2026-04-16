@@ -9,7 +9,9 @@ from src.bot.services.catalog_service import (
     DEFAULT_AD_SCENARIOS_PATH,
     DEFAULT_PRODUCTS_PATH,
     extract_budget,
+    find_category_in_query,
     find_products_by_name,
+    find_products_by_category,
     format_product_brief,
     format_product_details,
     get_catalog_categories,
@@ -62,6 +64,17 @@ class PlumbingBot:
     def _handle_show_catalog(self) -> str:
         categories = ", ".join(get_catalog_categories(self.products))
         return f"В каталоге есть следующие категории: {categories}."
+
+    def _handle_category_request(self, text: str) -> str | None:
+        items = find_products_by_category(text, self.products, limit=5)
+        category = find_category_in_query(text)
+        if not items:
+            return None
+
+        prefix = "Вот товары из этой категории:"
+        if category:
+            prefix = f"Вот несколько товаров из категории «{category}»:"
+        return prefix + "\n- " + "\n- ".join(format_product_brief(item) for item in items)
 
     def _handle_product_price(self, text: str) -> str | None:
         matches = find_products_by_name(text, self.products)
@@ -191,10 +204,12 @@ class PlumbingBot:
             intent = "fallback"
 
         dialogue_answer = find_dialogue_answer(text)
+        category_answer = self._handle_category_request(text)
         has_domain_markers = bool(
             processed.entities.get("product_names")
             or processed.entities.get("product_ids")
             or processed.entities.get("categories")
+            or find_category_in_query(text)
             or extract_budget(text) is not None
             or processed.topic in {"catalog", "kitchen", "bathroom", "sanitary", "heating", "promo", "price"}
         )
@@ -212,7 +227,9 @@ class PlumbingBot:
                 "answer": dialogue_answer,
             }
 
-        if intent == "show_catalog":
+        if category_answer:
+            answer = category_answer
+        elif intent == "show_catalog":
             answer = self._handle_show_catalog()
         elif intent in {"bot_capabilities", "ask_bot_identity", "ask_availability", "ask_delivery_installation"}:
             answer = self._random_response(intent)

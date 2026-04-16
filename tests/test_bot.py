@@ -54,3 +54,15 @@ def test_bot_handles_complete_set_intent() -> None:
     result = bot.reply("нужен комплект для ванной")
     assert result["intent"] == "select_complete_set"
     assert "комплект" in result["answer"].lower()
+
+
+def test_bot_handles_category_request_for_installation() -> None:
+    bot = PlumbingBot()
+    result = bot.reply("что есть из систем монтажа")
+    assert "Системы монтажа" in result["answer"] or "SanFrame" in result["answer"]
+
+
+def test_bot_handles_category_request_for_water_heaters() -> None:
+    bot = PlumbingBot()
+    result = bot.reply("покажи водонагреватели")
+    assert "HeatLine" in result["answer"] or "Водонагреватели" in result["answer"]

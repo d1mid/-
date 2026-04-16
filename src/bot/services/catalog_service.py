@@ -9,6 +9,57 @@ from src.bot.utils.text import normalize_text
 DEFAULT_PRODUCTS_PATH = Path("data/products.json")
 DEFAULT_AD_SCENARIOS_PATH = Path("data/ad_scenarios.json")
 
+CATEGORY_ALIASES = {
+    "Смесители": [
+        "смесители",
+        "смеситель",
+        "краны",
+        "кран",
+    ],
+    "Душевое оборудование": [
+        "душевое оборудование",
+        "душевые",
+        "душевая система",
+        "душевые системы",
+        "душевая стойка",
+        "душевые стойки",
+        "душ",
+    ],
+    "Санфаянс": [
+        "санфаянс",
+        "санфаянсу",
+        "сантехника для санузла",
+        "санузел",
+    ],
+    "Системы монтажа": [
+        "системы монтажа",
+        "систем монтажа",
+        "система монтажа",
+        "монтажные системы",
+        "монтажная система",
+        "монтажная рама",
+        "монтажные рамы",
+        "инсталляция",
+        "инсталляции",
+    ],
+    "Водонагреватели": [
+        "водонагреватели",
+        "водонагреватель",
+        "бойлер",
+        "бойлеры",
+    ],
+}
+
+SUBCATEGORY_ALIASES = {
+    "Для кухни": ["для кухни", "кухонные", "кухня"],
+    "Для раковины": ["для раковины", "для умывальника", "умывальник", "раковина"],
+    "Душевая система": ["душевая система", "душевые системы", "душевая стойка"],
+    "Инсталляции": ["инсталляции", "инсталляция", "система монтажа", "монтажная рама"],
+    "Накопительные": ["накопительные", "накопительный", "бойлер"],
+    "Раковины": ["раковины", "раковина"],
+    "Унитазы": ["унитазы", "унитаз"],
+}
+
 
 def load_catalog(products_path: str | Path = DEFAULT_PRODUCTS_PATH) -> list[dict]:
     products_path = Path(products_path)
@@ -28,6 +79,45 @@ def load_ad_scenarios(ad_scenarios_path: str | Path = DEFAULT_AD_SCENARIOS_PATH)
 
 def get_catalog_categories(products: list[dict]) -> list[str]:
     return sorted({product.get("category", "") for product in products if product.get("category")})
+
+
+def find_category_in_query(query: str) -> str | None:
+    lowered = query.lower()
+    normalized = normalize_text(query)
+    for category, aliases in CATEGORY_ALIASES.items():
+        for alias in aliases:
+            alias_normalized = normalize_text(alias)
+            if alias in lowered or (alias_normalized and alias_normalized in normalized):
+                return category
+    return None
+
+
+def find_subcategory_in_query(query: str) -> str | None:
+    lowered = query.lower()
+    normalized = normalize_text(query)
+    for subcategory, aliases in SUBCATEGORY_ALIASES.items():
+        for alias in aliases:
+            alias_normalized = normalize_text(alias)
+            if alias in lowered or (alias_normalized and alias_normalized in normalized):
+                return subcategory
+    return None
+
+
+def find_products_by_category(query: str, products: list[dict], limit: int = 5) -> list[dict]:
+    category = find_category_in_query(query)
+    subcategory = find_subcategory_in_query(query)
+
+    matches = products
+    if category:
+        category_matches = [product for product in matches if product.get("category") == category]
+        if category_matches:
+            matches = category_matches
+    if subcategory:
+        subcategory_matches = [product for product in matches if product.get("subcategory") == subcategory]
+        if subcategory_matches:
+            matches = subcategory_matches
+
+    return matches[:limit] if (category or subcategory) else []
 
 
 def get_promoted_products(products: list[dict]) -> list[dict]:

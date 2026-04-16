@@ -44,3 +44,24 @@
 - реализовать подбор товаров из каталога;
 - подключить Telegram-бота;
 - протестировать диалоги, рекомендации и рекламные сценарии.
+
+## Запуск
+
+Локальный консольный режим:
+
+```bash
+python -m src.bot.main
+```
+
+Запуск Telegram-бота:
+
+```bash
+set TELEGRAM_BOT_TOKEN=ваш_токен
+python -m src.bot.main --telegram
+```
+
+Для Telegram доступны команды:
+
+- `/start`
+- `/help`
+- `/catalog`
