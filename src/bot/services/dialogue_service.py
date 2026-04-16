@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 from src.bot.utils.text import build_domain_vocabulary, levenshtein_distance, normalize_text
@@ -9,10 +10,15 @@ DEFAULT_DIALOGUES_PATH = Path("data/dialogues.txt")
 
 
 def load_dialogue_pairs(dialogues_path: str | Path = DEFAULT_DIALOGUES_PATH) -> list[tuple[str, str]]:
+    return list(_load_dialogue_pairs_cached(str(Path(dialogues_path))))
+
+
+@lru_cache(maxsize=4)
+def _load_dialogue_pairs_cached(dialogues_path: str) -> tuple[tuple[str, str], ...]:
     dialogues_path = Path(dialogues_path)
     content = dialogues_path.read_text(encoding="utf-8").strip()
     if not content:
-        return []
+        return tuple()
 
     pairs: list[tuple[str, str]] = []
     seen_questions: set[str] = set()
@@ -28,7 +34,7 @@ def load_dialogue_pairs(dialogues_path: str | Path = DEFAULT_DIALOGUES_PATH) -> 
             if normalized_question and answer and normalized_question not in seen_questions:
                 seen_questions.add(normalized_question)
                 pairs.append((normalized_question, answer))
-        return pairs
+        return tuple(pairs)
 
     chunks = [chunk.strip() for chunk in content.split("\n\n") if chunk.strip()]
     for chunk in chunks:
@@ -42,7 +48,7 @@ def load_dialogue_pairs(dialogues_path: str | Path = DEFAULT_DIALOGUES_PATH) -> 
         if normalized_question and question and answer and normalized_question not in seen_questions:
             seen_questions.add(normalized_question)
             pairs.append((normalized_question, answer))
-    return pairs
+    return tuple(pairs)
 
 
 def find_dialogue_answer(

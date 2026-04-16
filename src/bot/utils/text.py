@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 import json
 from pathlib import Path
 import re
 from typing import Iterable
+import warnings
+
+warnings.filterwarnings(
+    "ignore",
+    message=r"pkg_resources is deprecated as an API.*",
+    category=UserWarning,
+)
 
 try:
     from natasha import Doc, MorphVocab, NewsEmbedding, NewsMorphTagger, Segmenter
@@ -367,6 +375,24 @@ def build_domain_vocabulary(
     intents_path: str | Path = DEFAULT_INTENTS_PATH,
     extra_texts: Iterable[str] | None = None,
 ) -> set[str]:
+    if extra_texts:
+        return _build_domain_vocabulary_uncached(products_path, intents_path, tuple(extra_texts))
+    return set(_build_domain_vocabulary_cached(str(Path(products_path)), str(Path(intents_path))))
+
+
+@lru_cache(maxsize=8)
+def _build_domain_vocabulary_cached(
+    products_path: str,
+    intents_path: str,
+) -> tuple[str, ...]:
+    return tuple(sorted(_build_domain_vocabulary_uncached(products_path, intents_path, ())))
+
+
+def _build_domain_vocabulary_uncached(
+    products_path: str | Path,
+    intents_path: str | Path,
+    extra_texts: Iterable[str] | None = None,
+) -> set[str]:
     products_path = Path(products_path)
     intents_path = Path(intents_path)
 
@@ -515,26 +541,19 @@ def extract_entities(
     normalized_query_tokens = set(normalize_lemmas(query_lemmas, mode="catalog"))
     entities["numbers"] = [token for token in tokens if token.isdigit()]
 
-    products_path = Path(products_path)
-    if products_path.exists():
-        products = json.loads(products_path.read_text(encoding="utf-8"))
-        if isinstance(products, list):
-            for product in products:
-                product_id = str(product.get("id", "")).lower()
-                product_name = str(product.get("name", "")).lower()
-                category = str(product.get("category", "")).lower()
+    for item in _load_product_entity_index(str(Path(products_path))):
+        product_id = item["id_lower"]
+        product_name = item["name_lower"]
+        category = item["category_lower"]
 
-                if product_id and product_id in lowered:
-                    entities["product_ids"].append(product.get("id"))
-                product_lemmas, _ = lemmatize_text(product_name)
-                normalized_product_tokens = set(normalize_lemmas(product_lemmas, mode="catalog"))
-
-                if product_name and product_name in lowered:
-                    entities["product_names"].append(product.get("name"))
-                elif normalized_product_tokens and normalized_product_tokens.issubset(normalized_query_tokens):
-                    entities["product_names"].append(product.get("name"))
-                if category and any(token == category or token in category for token in tokens):
-                    entities["categories"].append(product.get("category"))
+        if product_id and product_id in lowered:
+            entities["product_ids"].append(item["id"])
+        if product_name and product_name in lowered:
+            entities["product_names"].append(item["name"])
+        elif item["normalized_name_tokens"] and item["normalized_name_tokens"].issubset(normalized_query_tokens):
+            entities["product_names"].append(item["name"])
+        if category and any(token == category or token in category for token in tokens):
+            entities["categories"].append(item["category"])
 
     entities["product_ids"] = sorted(set(filter(None, entities["product_ids"])))
     entities["product_names"] = sorted(set(filter(None, entities["product_names"])))
@@ -543,10 +562,33 @@ def extract_entities(
 
 
 def normalize_text(text: str, vocabulary: Iterable[str] | None = None, mode: str = "soft") -> str:
-    result = preprocess_user_text(text, vocabulary=vocabulary)
+    return _normalize_core(text, vocabulary=vocabulary, mode=mode)[0]
+
+
+def _normalize_core(
+    text: str,
+    vocabulary: Iterable[str] | None = None,
+    mode: str = "soft",
+) -> tuple[str, str, list[str], list[str], dict[str, str], bool]:
+    cleaned = clean_text(text)
+
+    if vocabulary:
+        corrected, corrections = correct_typos(cleaned, vocabulary)
+    else:
+        corrected = strip_punctuation(cleaned)
+        corrections = {}
+
+    corrected_tokens = tokenize(corrected)
+    lemmas, natasha_used = lemmatize_text(corrected)
+    normalized_tokens = normalize_lemmas(lemmas, mode="soft")
+    normalized_catalog_tokens = normalize_lemmas(lemmas, mode="catalog")
+
+    normalized_text = " ".join(normalized_tokens)
+    normalized_catalog_text = " ".join(normalized_catalog_tokens)
+
     if mode == "catalog":
-        return result.normalized_catalog
-    return result.normalized
+        return normalized_catalog_text, corrected, corrected_tokens, normalized_catalog_tokens, corrections, natasha_used
+    return normalized_text, corrected, corrected_tokens, normalized_tokens, corrections, natasha_used
 
 
 def preprocess_user_text(text: str, vocabulary: Iterable[str] | None = None) -> TextProcessingResult:
@@ -563,6 +605,8 @@ def preprocess_user_text(text: str, vocabulary: Iterable[str] | None = None) -> 
     lemmas, natasha_used = lemmatize_text(corrected)
     normalized_tokens = normalize_lemmas(lemmas, mode="soft")
     normalized_catalog_tokens = normalize_lemmas(lemmas, mode="catalog")
+    normalized = " ".join(normalized_tokens)
+    normalized_catalog = " ".join(normalized_catalog_tokens)
 
     sentiment_label, sentiment_score = analyze_sentiment(normalized_tokens)
     topic = classify_topic(normalized_catalog_tokens)
@@ -572,8 +616,8 @@ def preprocess_user_text(text: str, vocabulary: Iterable[str] | None = None) -> 
         original=text,
         cleaned=cleaned,
         corrected=corrected,
-        normalized=" ".join(normalized_tokens),
-        normalized_catalog=" ".join(normalized_catalog_tokens),
+        normalized=normalized,
+        normalized_catalog=normalized_catalog,
         original_tokens=original_tokens,
         corrected_tokens=corrected_tokens,
         normalized_tokens=normalized_tokens,
@@ -585,3 +629,30 @@ def preprocess_user_text(text: str, vocabulary: Iterable[str] | None = None) -> 
         topic=topic,
         natasha_used=natasha_used,
     )
+
+
+@lru_cache(maxsize=4)
+def _load_product_entity_index(products_path: str) -> tuple[dict, ...]:
+    path = Path(products_path)
+    if not path.exists():
+        return tuple()
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    products = data if isinstance(data, list) else data.get("products", [])
+
+    result = []
+    for product in products:
+        product_name = str(product.get("name", ""))
+        lemmas, _ = lemmatize_text(product_name)
+        result.append(
+            {
+                "id": product.get("id"),
+                "id_lower": str(product.get("id", "")).lower(),
+                "name": product.get("name"),
+                "name_lower": product_name.lower(),
+                "category": product.get("category"),
+                "category_lower": str(product.get("category", "")).lower(),
+                "normalized_name_tokens": set(normalize_lemmas(lemmas, mode="catalog")),
+            }
+        )
+    return tuple(result)

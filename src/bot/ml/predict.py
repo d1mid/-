@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 try:
@@ -14,13 +15,18 @@ DEFAULT_MODEL_PATH = Path("models/intent_model.joblib")
 
 
 def load_model_bundle(model_path: str | Path = DEFAULT_MODEL_PATH) -> dict:
+    return _load_model_bundle_cached(str(Path(model_path)))
+
+
+@lru_cache(maxsize=4)
+def _load_model_bundle_cached(model_path: str) -> dict:
     if joblib is None:
         raise RuntimeError("Для предсказания нужен joblib. Установите зависимости из requirements.txt.")
 
-    model_path = Path(model_path)
-    if not model_path.exists():
-        raise FileNotFoundError(f"Модель интентов не найдена: {model_path}")
-    return joblib.load(model_path)
+    path = Path(model_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Модель интентов не найдена: {path}")
+    return joblib.load(path)
 
 
 def predict_intent(text: str, model_path: str | Path = DEFAULT_MODEL_PATH) -> str:

@@ -5,7 +5,7 @@ import random
 from pathlib import Path
 import re
 
-from src.bot.ml.predict import predict_intent
+from src.bot.ml.predict import load_model_bundle, predict_intent
 from src.bot.services.catalog_service import (
     DEFAULT_AD_SCENARIOS_PATH,
     DEFAULT_PRODUCTS_PATH,
@@ -22,8 +22,9 @@ from src.bot.services.catalog_service import (
     load_catalog,
 )
 from src.bot.services.dialogue_service import find_dialogue_answer
+from src.bot.services.dialogue_service import load_dialogue_pairs
 from src.bot.services.recommendation_service import recommend_products
-from src.bot.utils.text import preprocess_user_text
+from src.bot.utils.text import _load_product_entity_index, build_domain_vocabulary, natasha_available, preprocess_user_text
 
 
 DEFAULT_INTENTS_PATH = Path("data/intents.json")
@@ -51,6 +52,20 @@ class PlumbingBot:
         self.products = load_catalog(products_path)
         self.intents = self._load_intents(intents_path)
         self.ad_scenarios = load_ad_scenarios(ad_scenarios_path)
+        self._warm_up(products_path)
+
+    @staticmethod
+    def _warm_up(products_path: str | Path) -> None:
+        try:
+            build_domain_vocabulary()
+            _load_product_entity_index(str(Path(products_path)))
+            load_dialogue_pairs()
+            load_model_bundle()
+            if natasha_available():
+                preprocess_user_text("тестовый прогрев")
+        except Exception:
+            # Если прогрев не удался, бот все равно продолжит работу через обычный путь.
+            pass
 
     @staticmethod
     def _load_intents(intents_path: str | Path) -> dict[str, dict]:
