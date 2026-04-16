@@ -9,6 +9,54 @@ from src.bot.utils.text import build_domain_vocabulary, levenshtein_distance, no
 
 DEFAULT_DIALOGUES_PATH = Path("data/dialogues.txt")
 
+GENERIC_DIALOGUE_TOKENS = {
+    "а",
+    "быть",
+    "в",
+    "во",
+    "вообще",
+    "вот",
+    "вы",
+    "да",
+    "делать",
+    "для",
+    "еще",
+    "и",
+    "или",
+    "как",
+    "какой",
+    "мне",
+    "можно",
+    "надо",
+    "не",
+    "ну",
+    "о",
+    "он",
+    "она",
+    "они",
+    "подскажи",
+    "подсказать",
+    "рассказать",
+    "пока",
+    "почему",
+    "привет",
+    "про",
+    "просто",
+    "расскажи",
+    "любить",
+    "нравиться",
+    "думать",
+    "с",
+    "скажи",
+    "так",
+    "ты",
+    "у",
+    "что",
+    "это",
+    "этот",
+    "я",
+}
+
 DIALOGUE_THEME_KEYWORDS: dict[str, tuple[str, ...]] = {
     "greeting": ("привет", "здравствуйте", "добрый", "вечер", "утро", "день"),
     "mood": ("дело", "настроение", "жизнь", "новое", "сам"),
@@ -180,11 +228,17 @@ def find_dialogue_answer(
         return None
 
     candidates: list[tuple[float, str]] = []
+    replica_tokens = _meaningful_tokens(normalized_replica)
+    if not replica_tokens:
+        return None
     for question, answer in load_dialogue_pairs(dialogues_path):
         if not question:
             continue
         length_gap = abs(len(normalized_replica) - len(question)) / max(len(question), 1)
         if length_gap >= 0.35:
+            continue
+        question_tokens = _meaningful_tokens(question)
+        if replica_tokens and question_tokens and not (replica_tokens & question_tokens):
             continue
         distance = levenshtein_distance(normalized_replica, question)
         weighted = distance / max(len(question), 1)
@@ -248,3 +302,7 @@ def _get_theme_answers(theme: str, dialogues_path: str) -> tuple[str, ...]:
 
 def _contains_theme_token(tokens: list[str], keyword: str) -> bool:
     return any(token == keyword or (len(keyword) >= 6 and token.startswith(keyword)) for token in tokens)
+
+
+def _meaningful_tokens(text: str) -> set[str]:
+    return {token for token in text.split() if token and token not in GENERIC_DIALOGUE_TOKENS}
