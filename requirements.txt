@@ -1,0 +1,6 @@
+scikit-learn>=1.5
+natasha>=1.6
+python-telegram-bot>=21.0
+joblib>=1.4
+nltk>=3.9
+
