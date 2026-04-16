@@ -63,6 +63,21 @@ def test_bot_handles_small_talk() -> None:
     assert "хорош" in result["answer"].lower() or "спасибо" in result["answer"].lower()
 
 
+def test_bot_can_softly_transition_to_promo_after_small_talk() -> None:
+    bot = PlumbingBot()
+    bot.reply("Как у тебя дела?", conversation_id="chat-1")
+    result = bot.reply("Что нового?", conversation_id="chat-1")
+    assert result["intent"] == "small_talk"
+    assert "кстати" in result["answer"].lower() or "каталог" in result["answer"].lower()
+
+
+def test_bot_adds_soft_promo_to_recommendation() -> None:
+    bot = PlumbingBot()
+    result = bot.reply("что посоветуешь", conversation_id="chat-2")
+    assert result["intent"] == "request_recommendation"
+    assert "кстати" in result["answer"].lower() or "руб." in result["answer"].lower()
+
+
 def test_bot_handles_category_request_for_installation() -> None:
     bot = PlumbingBot()
     result = bot.reply("что есть из систем монтажа")

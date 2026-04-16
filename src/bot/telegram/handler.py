@@ -35,7 +35,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def show_catalog(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     bot = context.application.bot_data["plumbing_bot"]
-    result = bot.reply("покажи каталог")
+    conversation_id = str(update.effective_chat.id) if update.effective_chat else "default"
+    result = bot.reply("покажи каталог", conversation_id=conversation_id)
     await update.message.reply_text(result["answer"])
 
 
@@ -44,7 +45,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     bot = context.application.bot_data["plumbing_bot"]
-    result = bot.reply(update.message.text)
+    conversation_id = str(update.effective_chat.id) if update.effective_chat else "default"
+    result = bot.reply(update.message.text, conversation_id=conversation_id)
     await update.message.reply_text(result["answer"])
 
 

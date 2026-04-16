@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import random
 from pathlib import Path
@@ -30,6 +31,14 @@ from src.bot.utils.text import _load_product_entity_index, build_domain_vocabula
 DEFAULT_INTENTS_PATH = Path("data/intents.json")
 
 
+@dataclass
+class ConversationState:
+    turns: int = 0
+    free_talk_turns: int = 0
+    promo_cooldown: int = 0
+    last_intent: str = "fallback"
+
+
 class PlumbingBot:
     DIRECT_INTENT_PRIORITY = {
         "greeting",
@@ -52,6 +61,7 @@ class PlumbingBot:
         self.products = load_catalog(products_path)
         self.intents = self._load_intents(intents_path)
         self.ad_scenarios = load_ad_scenarios(ad_scenarios_path)
+        self.sessions: dict[str, ConversationState] = {}
         self._warm_up(products_path)
 
     @staticmethod
@@ -185,6 +195,47 @@ class PlumbingBot:
             return self._random_response("select_complete_set")
         return "Могу предложить такой комплект:\n- " + "\n- ".join(format_product_brief(item) for item in unique_items[:3])
 
+    def _get_session(self, conversation_id: str) -> ConversationState:
+        if conversation_id not in self.sessions:
+            self.sessions[conversation_id] = ConversationState()
+        return self.sessions[conversation_id]
+
+    def _build_soft_promo(self, base_intent: str | None = None) -> str | None:
+        matched = [scenario for scenario in self.ad_scenarios if base_intent and base_intent in scenario.get("trigger_intents", [])]
+        if not matched:
+            matched = self.ad_scenarios[:]
+        if not matched:
+            return None
+
+        scenario = random.choice(matched)
+        product = get_product_by_id(scenario["product_id"], self.products)
+        if product:
+            return (
+                f"Кстати, если захотите посмотреть что-то из каталога, могу показать {product['name']} "
+                f"за {product['price_rub']} руб. {scenario['messages'][0]}"
+            )
+        return f"Кстати, могу показать рекламный вариант: {scenario['product_name']}."
+
+    def _maybe_add_soft_promo(self, answer: str, state: ConversationState, intent: str) -> str:
+        if state.promo_cooldown > 0:
+            state.promo_cooldown -= 1
+            return answer
+
+        if intent in {"small_talk", "bot_capabilities", "ask_bot_identity"} and state.free_talk_turns >= 2:
+            promo = self._build_soft_promo()
+            if promo:
+                state.promo_cooldown = 3
+                state.free_talk_turns = 0
+                return answer + "\n\n" + promo
+
+        if intent == "request_recommendation":
+            promo = self._build_soft_promo("promo_offer")
+            if promo:
+                state.promo_cooldown = 2
+                return answer + "\n\n" + promo
+
+        return answer
+
     @staticmethod
     def _rule_based_intent(text: str) -> str | None:
         lowered = text.lower().strip()
@@ -227,7 +278,9 @@ class PlumbingBot:
             "ask_delivery_installation",
         }
 
-    def reply(self, text: str) -> dict[str, str]:
+    def reply(self, text: str, conversation_id: str = "default") -> dict[str, str]:
+        state = self._get_session(conversation_id)
+        state.turns += 1
         processed = preprocess_user_text(text)
         forced_intent = self._rule_based_intent(text)
         try:
@@ -307,6 +360,16 @@ class PlumbingBot:
             answer = dialogue_answer
         if not answer:
             answer = self._random_response("fallback")
+
+        if intent in {"small_talk", "bot_capabilities", "ask_bot_identity"}:
+            state.free_talk_turns += 1
+        elif intent in {"greeting", "goodbye"}:
+            state.free_talk_turns = max(0, state.free_talk_turns - 1)
+        else:
+            state.free_talk_turns = 0
+
+        answer = self._maybe_add_soft_promo(answer, state, intent)
+        state.last_intent = intent
 
         return {
             "intent": intent,
