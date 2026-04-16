@@ -377,6 +377,25 @@ class PlumbingBot:
         answer = self._append_plumbing_bridge(answer, state)
         return self._maybe_add_soft_promo(answer, state, intent)
 
+    def _build_non_target_payload(
+        self,
+        answer: str,
+        state: ConversationState,
+        processed: object,
+        intent: str = "small_talk",
+        reply_kind: str = "small_talk",
+    ) -> dict[str, str]:
+        state.free_talk_turns += 1
+        state.last_intent = intent
+        state.last_reply_kind = reply_kind
+        final_answer = self._finalize_non_target_answer(answer, state, intent)
+        return {
+            "intent": intent,
+            "topic": processed.topic,
+            "sentiment": processed.sentiment_label,
+            "answer": final_answer,
+        }
+
     def reply(self, text: str, conversation_id: str = "default") -> dict[str, str]:
         state = self._get_session(conversation_id)
         state.turns += 1
@@ -417,37 +436,17 @@ class PlumbingBot:
             dialogue_answer
             and not has_domain_markers
             and not forced_intent
-            and intent not in {"greeting", "goodbye", "small_talk", "bot_capabilities"}
             and not self._is_domain_intent(intent)
         ):
-            state.free_talk_turns += 1
-            state.last_intent = "small_talk"
-            state.last_reply_kind = "small_talk"
-            answer = self._finalize_non_target_answer(dialogue_answer, state)
-            return {
-                "intent": "small_talk",
-                "topic": processed.topic,
-                "sentiment": processed.sentiment_label,
-                "answer": answer,
-            }
+            return self._build_non_target_payload(dialogue_answer, state, processed)
 
         if (
             thematic_dialogue_answer
             and not has_domain_markers
             and not forced_intent
-            and intent not in {"greeting", "goodbye", "bot_capabilities", "ask_bot_identity"}
             and not self._is_domain_intent(intent)
         ):
-            state.free_talk_turns += 1
-            state.last_intent = "small_talk"
-            state.last_reply_kind = "small_talk"
-            answer = self._finalize_non_target_answer(thematic_dialogue_answer, state)
-            return {
-                "intent": "small_talk",
-                "topic": processed.topic,
-                "sentiment": processed.sentiment_label,
-                "answer": answer,
-            }
+            return self._build_non_target_payload(thematic_dialogue_answer, state, processed)
 
         if (
             self._looks_like_offtopic(text)
@@ -455,16 +454,7 @@ class PlumbingBot:
             and intent not in {"greeting", "goodbye", "small_talk", "bot_capabilities", "ask_bot_identity"}
         ):
             answer = dialogue_answer or thematic_dialogue_answer or self._offtopic_response()
-            state.free_talk_turns += 1
-            state.last_intent = "small_talk"
-            state.last_reply_kind = "offtopic"
-            answer = self._finalize_non_target_answer(answer, state)
-            return {
-                "intent": "small_talk",
-                "topic": processed.topic,
-                "sentiment": processed.sentiment_label,
-                "answer": answer,
-            }
+            return self._build_non_target_payload(answer, state, processed, reply_kind="offtopic")
 
         if category_answer:
             answer = category_answer

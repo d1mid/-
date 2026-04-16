@@ -71,7 +71,7 @@ DIALOGUE_THEME_KEYWORDS: dict[str, tuple[str, ...]] = {
     "sport": ("спорт", "тренировка", "футбол", "баскетбол", "бег", "мотивация"),
     "travel": ("путешествие", "отпуск", "море", "гора", "поезд", "самолет", "природа"),
     "animals": ("животное", "кошка", "кот", "собака", "попугай", "рыбка", "лошадь"),
-    "cars": ("машина", "авто", "bmw", "mercedes", "audi", "porsche", "порш", "мотоцикл"),
+    "cars": ("машина", "авто", "bmw", "бмв", "mercedes", "мерседес", "audi", "ауди", "porsche", "порш", "мотоцикл"),
     "colors": ("цвет", "черный", "белый", "красный", "синий", "зеленый", "серый"),
     "home": ("уют", "порядок", "дом", "тишина", "шум", "ночь", "утро", "бардак"),
     "identity": ("кто", "бот", "робот", "человек", "настоящий", "живой", "умный"),
@@ -227,27 +227,36 @@ def find_dialogue_answer(
     if not normalized_replica:
         return None
 
-    candidates: list[tuple[float, str]] = []
     replica_tokens = _meaningful_tokens(normalized_replica)
     if not replica_tokens:
         return None
-    for question, answer in load_dialogue_pairs(dialogues_path):
+
+    candidate_ids = _get_dialogue_candidate_ids(tuple(sorted(replica_tokens)), str(Path(dialogues_path)))
+    if not candidate_ids:
+        return None
+
+    answers: list[tuple[float, str, str]] = []
+    pairs = load_dialogue_pairs(dialogues_path)
+    for pair_index in candidate_ids:
+        if pair_index >= len(pairs):
+            continue
+        question, answer = pairs[pair_index]
         if not question:
             continue
         length_gap = abs(len(normalized_replica) - len(question)) / max(len(question), 1)
-        if length_gap >= 0.35:
+        if length_gap >= 0.25:
             continue
         question_tokens = _meaningful_tokens(question)
         if replica_tokens and question_tokens and not (replica_tokens & question_tokens):
             continue
         distance = levenshtein_distance(normalized_replica, question)
         weighted = distance / max(len(question), 1)
-        if weighted <= 0.35:
-            candidates.append((weighted, answer))
+        if weighted <= 0.25:
+            answers.append((weighted, question, answer))
 
-    if not candidates:
+    if not answers:
         return None
-    return min(candidates, key=lambda item: item[0])[1]
+    return min(answers, key=lambda item: item[0])[2]
 
 
 def find_thematic_dialogue_answer(
@@ -306,3 +315,33 @@ def _contains_theme_token(tokens: list[str], keyword: str) -> bool:
 
 def _meaningful_tokens(text: str) -> set[str]:
     return {token for token in text.split() if token and token not in GENERIC_DIALOGUE_TOKENS}
+
+
+@lru_cache(maxsize=128)
+def _get_dialogue_candidate_ids(tokens: tuple[str, ...], dialogues_path: str) -> tuple[int, ...]:
+    if not tokens:
+        return tuple()
+
+    index = _load_dialogue_index_cached(dialogues_path)
+    candidate_ids: set[int] = set()
+    for token in tokens:
+        candidate_ids.update(index.get(token, ()))
+    return tuple(sorted(candidate_ids))
+
+
+@lru_cache(maxsize=4)
+def _load_dialogue_index_cached(dialogues_path: str) -> dict[str, tuple[int, ...]]:
+    pairs = _load_dialogue_pairs_cached(dialogues_path)
+    index: dict[str, list[tuple[int, int]]] = {}
+
+    for pair_index, (question, _) in enumerate(pairs):
+        tokens = _meaningful_tokens(question)
+        question_length = len(question)
+        for token in tokens:
+            index.setdefault(token, []).append((pair_index, question_length))
+
+    compact_index: dict[str, tuple[int, ...]] = {}
+    for token, candidates in index.items():
+        candidates.sort(key=lambda item: item[1])
+        compact_index[token] = tuple(pair_index for pair_index, _ in candidates[:1000])
+    return compact_index
