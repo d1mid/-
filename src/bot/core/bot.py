@@ -22,7 +22,7 @@ from src.bot.services.catalog_service import (
     load_ad_scenarios,
     load_catalog,
 )
-from src.bot.services.dialogue_service import find_dialogue_answer
+from src.bot.services.dialogue_service import find_dialogue_answer, find_thematic_dialogue_answer
 from src.bot.services.dialogue_service import load_dialogue_pairs
 from src.bot.services.recommendation_service import recommend_products
 from src.bot.utils.text import _load_product_entity_index, build_domain_vocabulary, natasha_available, preprocess_user_text
@@ -37,6 +37,9 @@ class ConversationState:
     free_talk_turns: int = 0
     promo_cooldown: int = 0
     last_intent: str = "fallback"
+    last_reply_kind: str = "generic"
+    last_recommendation_ids: list[str] | None = None
+    last_category: str | None = None
 
 
 class PlumbingBot:
@@ -51,6 +54,11 @@ class PlumbingBot:
         "ask_availability",
         "ask_delivery_installation",
     }
+
+    FOLLOW_UP_RECOMMENDATION_RE = re.compile(
+        r"^(а еще( что)?|что еще|еще что|еще варианты|другие варианты|еще|а еще есть)\??$",
+        re.IGNORECASE,
+    )
 
     def __init__(
         self,
@@ -137,6 +145,18 @@ class PlumbingBot:
         prefix = "Вот несколько подходящих вариантов:"
         return prefix + "\n- " + "\n- ".join(lines)
 
+    def _get_more_recommendations(self, state: ConversationState) -> str | None:
+        if not state.last_recommendation_ids:
+            return None
+
+        seen = set(state.last_recommendation_ids)
+        items = [product for product in self.products if product.get("id") not in seen][:3]
+        if not items:
+            return "Пока это основные варианты, которые я могу предложить сразу. Если хотите, могу сузить выбор по бюджету, помещению или типу товара."
+
+        state.last_recommendation_ids.extend([item["id"] for item in items])
+        return "Можно посмотреть еще такие варианты:\n- " + "\n- ".join(format_product_brief(item) for item in items)
+
     def _handle_budget(self, text: str, intent: str) -> str | None:
         budget = extract_budget(text)
         if budget is None:
@@ -194,6 +214,49 @@ class PlumbingBot:
         if not unique_items:
             return self._random_response("select_complete_set")
         return "Могу предложить такой комплект:\n- " + "\n- ".join(format_product_brief(item) for item in unique_items[:3])
+
+    @staticmethod
+    def _looks_like_offtopic(text: str, processed: object) -> bool:
+        lowered = text.lower().strip()
+        if not lowered:
+            return False
+
+        domain_keywords = (
+            "смес",
+            "душ",
+            "унитаз",
+            "инстал",
+            "монтаж",
+            "раков",
+            "водонагрев",
+            "бойлер",
+            "санфаян",
+            "сантех",
+            "кухн",
+            "ванн",
+            "сануз",
+            "каталог",
+            "товар",
+            "цена",
+            "руб",
+        )
+        if any(keyword in lowered for keyword in domain_keywords):
+            return False
+
+        if re.search(r"\bрасскажи про\b", lowered):
+            return True
+        if re.search(r"\bлюбишь\b", lowered) or re.search(r"\bчто думаешь\b", lowered):
+            return True
+        if len(lowered.split()) <= 2:
+            return True
+        return False
+
+    @staticmethod
+    def _offtopic_response(text: str) -> str:
+        lowered = text.lower()
+        if "кош" in lowered:
+            return "О кошках я могу поболтать совсем немного: они обычно ассоциируются с независимым характером. Но лучше всего я помогаю с подбором сантехники."
+        return "Могу немного поддержать разговор, но лучше всего я разбираюсь в сантехнике. Если хотите, могу плавно вернуться к выбору товаров."
 
     def _get_session(self, conversation_id: str) -> ConversationState:
         if conversation_id not in self.sessions:
@@ -282,6 +345,18 @@ class PlumbingBot:
         state = self._get_session(conversation_id)
         state.turns += 1
         processed = preprocess_user_text(text)
+
+        if self.FOLLOW_UP_RECOMMENDATION_RE.match(text.strip()) and state.last_recommendation_ids:
+            answer = self._get_more_recommendations(state)
+            state.last_intent = "request_recommendation"
+            state.last_reply_kind = "recommendation"
+            return {
+                "intent": "request_recommendation",
+                "topic": processed.topic,
+                "sentiment": processed.sentiment_label,
+                "answer": answer or self._random_response("request_recommendation"),
+            }
+
         forced_intent = self._rule_based_intent(text)
         try:
             intent = predict_intent(text)
@@ -291,6 +366,7 @@ class PlumbingBot:
             intent = forced_intent
 
         dialogue_answer = find_dialogue_answer(text)
+        thematic_dialogue_answer = None if dialogue_answer else find_thematic_dialogue_answer(text)
         category_answer = self._handle_category_request(text)
         has_domain_markers = bool(
             processed.entities.get("product_names")
@@ -303,37 +379,77 @@ class PlumbingBot:
 
         if (
             dialogue_answer
-            and intent not in self.DIRECT_INTENT_PRIORITY
-            and self._is_domain_intent(intent)
             and not has_domain_markers
+            and not forced_intent
+            and intent not in {"greeting", "goodbye", "small_talk", "bot_capabilities"}
+            and not self._is_domain_intent(intent)
         ):
             return {
-                "intent": intent,
+                "intent": "small_talk",
                 "topic": processed.topic,
                 "sentiment": processed.sentiment_label,
                 "answer": dialogue_answer,
             }
 
+        if thematic_dialogue_answer and not has_domain_markers and not forced_intent:
+            state.free_talk_turns += 1
+            state.last_intent = "small_talk"
+            state.last_reply_kind = "small_talk"
+            answer = self._maybe_add_soft_promo(thematic_dialogue_answer, state, "small_talk")
+            return {
+                "intent": "small_talk",
+                "topic": processed.topic,
+                "sentiment": processed.sentiment_label,
+                "answer": answer,
+            }
+
+        if (
+            self._looks_like_offtopic(text, processed)
+            and not has_domain_markers
+            and intent not in {"greeting", "goodbye", "small_talk", "bot_capabilities", "ask_bot_identity"}
+        ):
+            answer = dialogue_answer or thematic_dialogue_answer or self._offtopic_response(text)
+            state.free_talk_turns += 1
+            state.last_intent = "small_talk"
+            state.last_reply_kind = "offtopic"
+            answer = self._maybe_add_soft_promo(answer, state, "small_talk")
+            return {
+                "intent": "small_talk",
+                "topic": processed.topic,
+                "sentiment": processed.sentiment_label,
+                "answer": answer,
+            }
+
         if category_answer:
             answer = category_answer
+            state.last_reply_kind = "recommendation"
         elif intent == "show_catalog":
             answer = self._handle_show_catalog()
+            state.last_reply_kind = "generic"
         elif intent in {"bot_capabilities", "ask_bot_identity", "ask_availability", "ask_delivery_installation"}:
             answer = self._random_response(intent)
+            state.last_reply_kind = "generic"
         elif intent == "ask_price":
             answer = self._handle_product_price(text) or self._random_response(intent)
+            state.last_reply_kind = "product"
         elif intent in {"ask_characteristics", "ask_material", "ask_dimensions_compatibility"}:
             answer = self._handle_product_characteristics(text) or self._random_response(intent)
+            state.last_reply_kind = "product"
         elif intent == "compare_products":
             answer = self._handle_compare_products(text)
+            state.last_reply_kind = "product"
         elif intent == "selection_by_budget":
             answer = self._handle_budget(text, intent)
+            state.last_reply_kind = "recommendation"
         elif intent == "promo_offer":
             answer = self._handle_showcase_promoted()
+            state.last_reply_kind = "promo"
         elif intent == "request_recommendation":
             answer = self._handle_recommendations(text, "select_premium_upgrade") or self._random_response(intent)
+            state.last_reply_kind = "recommendation"
         elif intent == "select_complete_set":
             answer = self._handle_complete_set(text)
+            state.last_reply_kind = "recommendation"
         elif intent in {
             "select_kitchen_faucet",
             "select_bathroom_faucet",
@@ -351,15 +467,19 @@ class PlumbingBot:
             promo = self._handle_promo(intent)
             if promo:
                 answer = answer + "\n\n" + promo
+            state.last_reply_kind = "recommendation"
         elif intent in {"greeting", "goodbye", "small_talk"}:
             answer = self._random_response(intent)
+            state.last_reply_kind = "small_talk"
         else:
             answer = None
+            state.last_reply_kind = "generic"
 
         if not answer:
-            answer = dialogue_answer
+            answer = dialogue_answer or thematic_dialogue_answer
         if not answer:
             answer = self._random_response("fallback")
+            state.last_reply_kind = "generic"
 
         if intent in {"small_talk", "bot_capabilities", "ask_bot_identity"}:
             state.free_talk_turns += 1
@@ -367,6 +487,12 @@ class PlumbingBot:
             state.free_talk_turns = max(0, state.free_talk_turns - 1)
         else:
             state.free_talk_turns = 0
+
+        if state.last_reply_kind == "recommendation":
+            recommended = recommend_products(text, self.products, intent=intent, limit=5)
+            state.last_recommendation_ids = [item["id"] for item in recommended]
+        elif state.last_reply_kind != "product":
+            state.last_recommendation_ids = state.last_recommendation_ids if state.last_reply_kind == "small_talk" else None
 
         answer = self._maybe_add_soft_promo(answer, state, intent)
         state.last_intent = intent

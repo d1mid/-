@@ -552,7 +552,7 @@ def extract_entities(
             entities["product_names"].append(item["name"])
         elif item["normalized_name_tokens"] and item["normalized_name_tokens"].issubset(normalized_query_tokens):
             entities["product_names"].append(item["name"])
-        if category and any(token == category or token in category for token in tokens):
+        if item["normalized_category_tokens"] and item["normalized_category_tokens"].issubset(normalized_query_tokens):
             entities["categories"].append(item["category"])
 
     entities["product_ids"] = sorted(set(filter(None, entities["product_ids"])))
@@ -653,6 +653,9 @@ def _load_product_entity_index(products_path: str) -> tuple[dict, ...]:
                 "category": product.get("category"),
                 "category_lower": str(product.get("category", "")).lower(),
                 "normalized_name_tokens": set(normalize_lemmas(lemmas, mode="catalog")),
+                "normalized_category_tokens": set(
+                    normalize_lemmas(lemmatize_text(str(product.get("category", "")))[0], mode="catalog")
+                ),
             }
         )
     return tuple(result)

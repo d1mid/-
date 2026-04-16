@@ -63,6 +63,27 @@ def test_bot_handles_small_talk() -> None:
     assert "хорош" in result["answer"].lower() or "спасибо" in result["answer"].lower()
 
 
+def test_bot_handles_greeting_before_offtopic() -> None:
+    bot = PlumbingBot()
+    result = bot.reply("Привет")
+    assert result["intent"] == "greeting"
+    assert "привет" in result["answer"].lower() or "здрав" in result["answer"].lower()
+
+
+def test_bot_uses_dialogues_for_free_topic_phrase() -> None:
+    bot = PlumbingBot()
+    result = bot.reply("Что хорошо?")
+    assert result["intent"] == "small_talk"
+    assert "горжусь" in result["answer"].lower() or "хорошо" in result["answer"].lower()
+
+
+def test_bot_uses_thematic_dialogue_fallback() -> None:
+    bot = PlumbingBot()
+    result = bot.reply("как тебе спортивные машины")
+    assert result["intent"] == "small_talk"
+    assert "маш" in result["answer"].lower() or "автомоб" in result["answer"].lower() or "техник" in result["answer"].lower()
+
+
 def test_bot_can_softly_transition_to_promo_after_small_talk() -> None:
     bot = PlumbingBot()
     bot.reply("Как у тебя дела?", conversation_id="chat-1")
