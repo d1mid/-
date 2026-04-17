@@ -1,3 +1,5 @@
+"""Очистка, нормализация, коррекция опечаток и извлечение простых признаков из текста."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -268,6 +270,7 @@ def _natasha_pipeline():
 
     if not hasattr(_natasha_pipeline, "_cache"):
         try:
+            # Natasha инициализируется лениво, чтобы не замедлять импорт модуля.
             embedding = NewsEmbedding()
             setattr(
                 _natasha_pipeline,

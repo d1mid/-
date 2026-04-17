@@ -1,3 +1,5 @@
+"""Утилиты для работы с каталогом, категориями и рекламными товарами."""
+
 from __future__ import annotations
 
 import json
@@ -108,6 +110,7 @@ def find_products_by_category(query: str, products: list[dict], limit: int = 5) 
     subcategory = find_subcategory_in_query(query)
 
     matches = products
+    # Сначала стараемся сузить выбор по крупной категории, потом по подкатегории.
     if category:
         category_matches = [product for product in matches if product.get("category") == category]
         if category_matches:

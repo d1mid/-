@@ -1,3 +1,5 @@
+"""Основной pipeline бота: интенты, свободный диалог, каталог и реклама."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -33,6 +35,8 @@ DEFAULT_INTENTS_PATH = Path("data/intents.json")
 
 @dataclass
 class ConversationState:
+    """Минимальное состояние одной сессии пользователя."""
+
     turns: int = 0
     free_talk_turns: int = 0
     promo_cooldown: int = 0
@@ -81,6 +85,7 @@ class PlumbingBot:
     @staticmethod
     def _warm_up(products_path: str | Path) -> None:
         try:
+            # Прогрев нужен, чтобы первый реальный ответ не был самым медленным.
             build_domain_vocabulary()
             _load_product_entity_index(str(Path(products_path)))
             load_dialogue_pairs()
@@ -145,6 +150,7 @@ class PlumbingBot:
 
         index = None
         for candidate_index, markers in ordinal_map.items():
+            # Поддерживаем фразы вида "у первого", "у второго" и т.п.
             if any(marker in lowered for marker in markers):
                 index = candidate_index
                 break
@@ -385,6 +391,7 @@ class PlumbingBot:
         intent: str = "small_talk",
         reply_kind: str = "small_talk",
     ) -> dict[str, str]:
+        # Для нетоварных ответов сохраняем единый формат и единый мостик обратно к каталогу.
         state.free_talk_turns += 1
         state.last_intent = intent
         state.last_reply_kind = reply_kind
@@ -534,6 +541,7 @@ class PlumbingBot:
             state.free_talk_turns = 0
 
         if state.last_reply_kind == "recommendation" and not category_items:
+            # Запоминаем последний список, чтобы пользователь мог спросить про "первый" товар.
             recommended = recommend_products(text, self.products, intent=intent, limit=5)
             state.last_recommendation_ids = [item["id"] for item in recommended]
         elif state.last_reply_kind not in {"product", "recommendation"}:

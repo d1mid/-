@@ -1,3 +1,5 @@
+"""Проверки поиска по dialogues.txt и тематического fallback-слоя."""
+
 from src.bot.services.dialogue_service import find_dialogue_answer, find_thematic_dialogue_answer, load_dialogue_pairs
 
 

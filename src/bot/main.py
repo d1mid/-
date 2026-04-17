@@ -1,3 +1,5 @@
+"""Точка входа для локального запуска CLI-бота и Telegram-режима."""
+
 from __future__ import annotations
 
 import sys
@@ -7,6 +9,7 @@ from src.bot.telegram.handler import run_telegram_bot
 
 
 def main() -> None:
+    # CLI-режим оставлен как самый простой способ локальной проверки без Telegram.
     if len(sys.argv) > 1 and sys.argv[1] == "--telegram":
         run_telegram_bot()
         return

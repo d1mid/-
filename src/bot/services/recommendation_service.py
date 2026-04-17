@@ -1,3 +1,5 @@
+"""Подбор товаров по интенту, бюджету и совпадениям с текстом запроса."""
+
 from __future__ import annotations
 
 from src.bot.services.catalog_service import extract_budget
@@ -24,6 +26,7 @@ def _matches_filters(product: dict, filters: dict[str, str]) -> bool:
 
 def _score_product(product: dict, normalized_query: str, budget: int | None) -> int:
     score = 0
+    # Один общий текст удобен для простого rule-based скоринга без отдельных индексов.
     haystack = " ".join(
         [
             product.get("name", ""),
@@ -81,6 +84,7 @@ def recommend_products(
 
     scored = sorted(
         candidates,
+        # Сначала берем более релевантные товары, потом используем цену как дополнительный порядок.
         key=lambda product: (_score_product(product, processed.normalized, budget), -(product.get("price_rub", 0))),
         reverse=True,
     )

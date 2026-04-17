@@ -1,3 +1,5 @@
+"""Обучение модели интентов на примерах из intents.json."""
+
 from __future__ import annotations
 
 import json
@@ -33,6 +35,7 @@ def load_intent_dataset(intents_path: str | Path = DEFAULT_INTENTS_PATH) -> tupl
     for intent in data.get("intents", []):
         intent_name = intent["intent"]
         for example in intent.get("examples", []):
+            # На обучении используем ту же мягкую нормализацию, что и на предсказании.
             texts.append(normalize_text(example, vocabulary=vocabulary, mode="soft"))
             labels.append(intent_name)
     return texts, labels

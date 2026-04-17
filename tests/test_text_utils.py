@@ -1,3 +1,5 @@
+"""Проверки текстовой предобработки, опечаток и нормализации."""
+
 from src.bot.utils.text import (
     build_domain_vocabulary,
     clean_text,

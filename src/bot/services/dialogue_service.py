@@ -1,5 +1,8 @@
+"""Поиск ответа по dialogues.txt и по тематическому fallback-слою."""
+
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 from pathlib import Path
 import random
@@ -8,6 +11,7 @@ from src.bot.utils.text import build_domain_vocabulary, levenshtein_distance, no
 
 
 DEFAULT_DIALOGUES_PATH = Path("data/dialogues.txt")
+DEFAULT_THEME_KEYWORDS_PATH = Path("data/theme_keywords.json")
 
 GENERIC_DIALOGUE_TOKENS = {
     "а",
@@ -57,127 +61,23 @@ GENERIC_DIALOGUE_TOKENS = {
     "я",
 }
 
-DIALOGUE_THEME_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "greeting": ("привет", "здравствуйте", "добрый", "вечер", "утро", "день"),
-    "mood": ("дело", "настроение", "жизнь", "новое", "сам"),
-    "support": ("грустный", "тревога", "устать", "плохо", "одиноко", "поддержка", "страшно", "нервничать"),
-    "weather": ("погода", "дождь", "снег", "ветер", "жарко", "холодный", "солнечно"),
-    "plans": ("план", "сегодня", "вечер", "выходной", "заняться", "делать"),
-    "food": ("еда", "поесть", "кофе", "чай", "голодный", "пицца", "сладкое", "готовить"),
-    "music": ("музыка", "песня", "слушать", "рок", "рэп", "джаз", "концерт"),
-    "movies": ("фильм", "сериал", "мультфильм", "аниме", "смотреть", "комедия", "драма", "ужасы"),
-    "books": ("книга", "читать", "почитать", "детектив", "фантастика", "классика"),
-    "games": ("игра", "играть", "стратегия", "шутер", "инди", "сюжетный"),
-    "sport": ("спорт", "тренировка", "футбол", "баскетбол", "бег", "мотивация"),
-    "travel": ("путешествие", "отпуск", "море", "гора", "поезд", "самолет", "природа"),
-    "animals": ("животное", "кошка", "кот", "собака", "попугай", "рыбка", "лошадь"),
-    "cars": ("машина", "авто", "bmw", "бмв", "mercedes", "мерседес", "audi", "ауди", "porsche", "порш", "мотоцикл"),
-    "colors": ("цвет", "черный", "белый", "красный", "синий", "зеленый", "серый"),
-    "home": ("уют", "порядок", "дом", "тишина", "шум", "ночь", "утро", "бардак"),
-    "identity": ("кто", "бот", "робот", "человек", "настоящий", "живой", "умный"),
-    "communication": ("вежливый", "грубый", "ответ", "ошибка", "понять", "просто", "коротко", "длинный"),
-    "philosophy": ("смысл", "жизнь", "любовь", "дружба", "счастье", "успех", "философия"),
-}
-
-DIALOGUE_THEME_RESPONSES: dict[str, tuple[str, ...]] = {
-    "greeting": (
-        "Привет. Можно просто поговорить или перейти к любой теме, которая вам интересна.",
-        "Здравствуйте. Я готов поддержать спокойный разговор.",
-    ),
-    "mood": (
-        "Все нормально, спасибо. А у вас как настроение?",
-        "Неплохо. Если хотите, можем просто немного поболтать.",
-    ),
-    "support": (
-        "Понимаю. Иногда уже спокойный разговор немного помогает.",
-        "Сочувствую. Давайте без спешки, можно просто немного поговорить.",
-        "Если вам сейчас тяжело, лучше снизить темп и не давить на себя лишний раз.",
-    ),
-    "weather": (
-        "С погодой редко получается договориться, но обсудить ее всегда можно.",
-        "Такая погода обычно просто требует чуть больше терпения.",
-        "Погода меняется, а разговор можно сделать спокойнее.",
-    ),
-    "plans": (
-        "Если планов нет, это тоже иногда хороший план.",
-        "Лучше всего выбирать что-то посильное, без лишней гонки.",
-        "На вечер обычно хорошо работают простые вещи: отдых, музыка, фильм или прогулка.",
-    ),
-    "food": (
-        "Еда и напитки — одна из самых надежных тем для мирного разговора.",
-        "Если хочется чего-то приятного, чай или что-то вкусное уже неплохое начало.",
-        "О еде можно говорить долго, особенно когда пора сделать паузу.",
-    ),
-    "music": (
-        "Музыка обычно хорошо подстраивается под настроение, в этом ее сила.",
-        "Если хочется спокойствия, лучше выбрать что-то мягкое и без перегруза.",
-        "Хорошая музыка часто просто помогает выдохнуть.",
-    ),
-    "movies": (
-        "Фильмы удобны тем, что быстро меняют настроение и фон вечера.",
-        "Лучше выбирать фильм не по громкости названия, а по своему состоянию.",
-        "Если день был тяжелым, обычно лучше что-то полегче.",
-    ),
-    "books": (
-        "Книги хороши, когда хочется чуть больше тишины и внимания.",
-        "Иногда лучше начать с небольшой и понятной книги, а не с чего-то тяжелого.",
-        "Чтение хорошо работает, когда не хочется суеты.",
-    ),
-    "games": (
-        "Игры для многих — это способ переключиться и снять напряжение.",
-        "Тут все зависит от темпа: кому-то ближе сюжет, кому-то динамика.",
-        "Лучше всего выбирать игру под настроение, а не просто по популярности.",
-    ),
-    "sport": (
-        "Спорт многим помогает разгрузить голову и вернуть ощущение ритма.",
-        "Главное в спорте — не идеальность, а регулярность и адекватная нагрузка.",
-        "Даже небольшой старт обычно полезнее больших обещаний.",
-    ),
-    "travel": (
-        "Путешествия часто нужны просто ради смены картинки и ритма.",
-        "Отдых обычно удается лучше там, где не приходится спешить каждую минуту.",
-        "Даже короткая поездка иногда хорошо перезагружает.",
-    ),
-    "animals": (
-        "Животные часто делают разговор мягче уже самим своим присутствием.",
-        "Кошки, собаки и другие животные обычно легко становятся отдельной теплой темой.",
-        "О животных обычно приятно говорить, особенно если хочется чего-то спокойного.",
-    ),
-    "cars": (
-        "Машины для многих — это не только транспорт, но и вкус, характер и стиль.",
-        "У автомобильных тем обычно всегда есть свой азарт и свой язык.",
-        "Если речь о машинах, люди часто спорят о вкусе не меньше, чем о технике.",
-    ),
-    "colors": (
-        "С цветами все очень субъективно: важнее, чтобы оттенок не надоедал вам самому.",
-        "Цвет часто задает настроение сильнее, чем кажется на первый взгляд.",
-        "У каждого цвета свой характер, и в этом вся прелесть выбора.",
-    ),
-    "home": (
-        "Дом и уют обычно строятся из мелочей, а не из громких решений.",
-        "Порядок и спокойная атмосфера часто дают больше, чем идеальная картинка.",
-        "Иногда лучше всего просто немного упростить пространство вокруг себя.",
-    ),
-    "identity": (
-        "Я виртуальный собеседник, так что в основном существую в разговоре.",
-        "Я не человек, но могу поддерживать беседу и быть полезным в диалоге.",
-        "Я бот, но стараюсь отвечать спокойно и по-человечески.",
-    ),
-    "communication": (
-        "Если ответ звучит неудачно, всегда можно переформулировать и сделать его проще.",
-        "Нормальный разговор обычно держится на тоне не меньше, чем на смысле.",
-        "Можно говорить короче, мягче или проще — это все настраивается.",
-    ),
-    "philosophy": (
-        "На общие вопросы редко бывает один правильный ответ, но обсудить их всегда интересно.",
-        "Философские темы хороши, пока не превращаются в сплошной туман.",
-        "Иногда большой вопрос лучше разбирать по частям, а не штурмовать целиком.",
-    ),
-}
-
-
 def load_dialogue_pairs(dialogues_path: str | Path = DEFAULT_DIALOGUES_PATH) -> list[tuple[str, str]]:
     return list(_load_dialogue_pairs_cached(str(Path(dialogues_path))))
+
+
+@lru_cache(maxsize=2)
+def load_theme_config(theme_keywords_path: str | Path = DEFAULT_THEME_KEYWORDS_PATH) -> dict[str, dict[str, tuple[str, ...]]]:
+    path = Path(theme_keywords_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    themes = data.get("themes", {})
+    config: dict[str, dict[str, tuple[str, ...]]] = {}
+    for theme_name, theme_data in themes.items():
+        # Конфигурацию сразу приводим к tuple, чтобы ее было удобно кэшировать.
+        config[theme_name] = {
+            "keywords": tuple(theme_data.get("keywords", [])),
+            "responses": tuple(theme_data.get("responses", [])),
+        }
+    return config
 
 
 @lru_cache(maxsize=4)
@@ -231,6 +131,7 @@ def find_dialogue_answer(
     if not replica_tokens:
         return None
 
+    # Сначала собираем мини-датасет кандидатов по словам, как в классическом retrieval-подходе.
     candidate_ids = _get_dialogue_candidate_ids(tuple(sorted(replica_tokens)), str(Path(dialogues_path)))
     if not candidate_ids:
         return None
@@ -262,16 +163,18 @@ def find_dialogue_answer(
 def find_thematic_dialogue_answer(
     replica: str,
     dialogues_path: str | Path = DEFAULT_DIALOGUES_PATH,
+    theme_keywords_path: str | Path = DEFAULT_THEME_KEYWORDS_PATH,
 ) -> str | None:
     normalized_replica = normalize_text(replica, mode="soft")
     if not normalized_replica:
         return None
 
-    theme = _detect_dialogue_theme(normalized_replica)
+    theme = _detect_dialogue_theme(normalized_replica, theme_keywords_path)
     if not theme:
         return None
 
-    answers = DIALOGUE_THEME_RESPONSES.get(theme) or _get_theme_answers(theme, str(Path(dialogues_path)))
+    theme_config = load_theme_config(theme_keywords_path)
+    answers = theme_config.get(theme, {}).get("responses") or _get_theme_answers(theme, str(Path(dialogues_path)), str(Path(theme_keywords_path)))
     if not answers:
         return None
 
@@ -281,11 +184,16 @@ def find_thematic_dialogue_answer(
     return chooser.choice(list(answers))
 
 
-def _detect_dialogue_theme(normalized_replica: str) -> str | None:
+def _detect_dialogue_theme(
+    normalized_replica: str,
+    theme_keywords_path: str | Path = DEFAULT_THEME_KEYWORDS_PATH,
+) -> str | None:
     tokens = normalized_replica.split()
     best_theme = None
     best_score = 0
-    for theme, keywords in DIALOGUE_THEME_KEYWORDS.items():
+    theme_config = load_theme_config(theme_keywords_path)
+    for theme, theme_data in theme_config.items():
+        keywords = theme_data.get("keywords", ())
         score = sum(1 for keyword in keywords if _contains_theme_token(tokens, keyword))
         if score > best_score:
             best_theme = theme
@@ -294,8 +202,8 @@ def _detect_dialogue_theme(normalized_replica: str) -> str | None:
 
 
 @lru_cache(maxsize=64)
-def _get_theme_answers(theme: str, dialogues_path: str) -> tuple[str, ...]:
-    keywords = DIALOGUE_THEME_KEYWORDS.get(theme, ())
+def _get_theme_answers(theme: str, dialogues_path: str, theme_keywords_path: str) -> tuple[str, ...]:
+    keywords = load_theme_config(theme_keywords_path).get(theme, {}).get("keywords", ())
     if not keywords:
         return tuple()
 
@@ -342,6 +250,7 @@ def _load_dialogue_index_cached(dialogues_path: str) -> dict[str, tuple[int, ...
 
     compact_index: dict[str, tuple[int, ...]] = {}
     for token, candidates in index.items():
+        # Храним только ограниченный список самых коротких кандидатов, чтобы поиск был быстрее.
         candidates.sort(key=lambda item: item[1])
         compact_index[token] = tuple(pair_index for pair_index, _ in candidates[:1000])
     return compact_index

@@ -1,3 +1,5 @@
+"""Загрузка обученной модели и предсказание интента по пользовательской фразе."""
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -34,6 +36,7 @@ def predict_intent(text: str, model_path: str | Path = DEFAULT_MODEL_PATH) -> st
     vectorizer = bundle["vectorizer"]
     classifier = bundle["classifier"]
 
+    # Нормализация должна совпадать с логикой, использованной на обучении.
     vocabulary = build_domain_vocabulary()
     normalized = normalize_text(text, vocabulary=vocabulary, mode="soft")
     return str(classifier.predict(vectorizer.transform([normalized]))[0])

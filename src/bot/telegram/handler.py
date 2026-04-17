@@ -1,3 +1,5 @@
+"""Telegram-обертка над общей функцией бота."""
+
 from __future__ import annotations
 
 import os
@@ -44,6 +46,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if update.message is None or not update.message.text:
         return
 
+    # Chat ID используем как ключ сессии, чтобы сохранялась локальная память диалога.
     bot = context.application.bot_data["plumbing_bot"]
     conversation_id = str(update.effective_chat.id) if update.effective_chat else "default"
     result = bot.reply(update.message.text, conversation_id=conversation_id)
