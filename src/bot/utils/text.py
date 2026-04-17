@@ -10,6 +10,8 @@ import re
 from typing import Iterable
 import warnings
 
+from src.bot.services.theme_service import detect_theme_from_tokens
+
 warnings.filterwarnings(
     "ignore",
     message=r"pkg_resources is deprecated as an API.*",
@@ -178,7 +180,7 @@ SENTIMENT_LEXICON = {
     "проблема": -0.5,
 }
 
-TOPIC_KEYWORDS = {
+DOMAIN_TOPIC_KEYWORDS = {
     "catalog": {"каталог", "ассортимент", "товар", "сантехника"},
     "kitchen": {"кухня", "мойка", "смеситель", "фильтр"},
     "bathroom": {"ванная", "раковина", "смеситель", "душевой"},
@@ -208,6 +210,7 @@ class TextProcessingResult:
     natasha_used: bool = False
 
 
+# Очищает текст от лишних символов и повторных пробелов.
 def clean_text(text: str) -> str:
     cleaned = text.replace("ё", "е").replace("Ё", "Е")
     cleaned = NON_TEXT_RE.sub(" ", cleaned)
@@ -215,14 +218,17 @@ def clean_text(text: str) -> str:
     return cleaned.strip()
 
 
+# Разбивает текст на список токенов.
 def tokenize(text: str) -> list[str]:
     return [match.group(0).lower() for match in WORD_RE.finditer(text)]
 
 
+# Удаляет пунктуацию, сохраняя только токены и пробелы между ними.
 def strip_punctuation(text: str) -> str:
     return " ".join(tokenize(text))
 
 
+# Считает расстояние Левенштейна между двумя строками.
 def levenshtein_distance(left: str, right: str) -> int:
     if left == right:
         return 0
@@ -243,6 +249,7 @@ def levenshtein_distance(left: str, right: str) -> int:
     return previous[-1]
 
 
+# Возвращает допустимое расстояние опечатки в зависимости от длины слова.
 def max_typo_distance(token: str) -> int:
     if len(token) <= 4:
         return 1
@@ -251,6 +258,7 @@ def max_typo_distance(token: str) -> int:
     return 3
 
 
+# Выполняет упрощенный стемминг для русских слов.
 def simple_stem(token: str) -> str:
     if token in TOKEN_REPLACEMENTS:
         return TOKEN_REPLACEMENTS[token]
@@ -264,6 +272,7 @@ def simple_stem(token: str) -> str:
     return token
 
 
+# Инициализирует и кэширует Natasha pipeline для лемматизации.
 def _natasha_pipeline():
     if not all((Doc, MorphVocab, NewsEmbedding, NewsMorphTagger, Segmenter)):
         return None
@@ -286,10 +295,12 @@ def _natasha_pipeline():
     return getattr(_natasha_pipeline, "_cache")
 
 
+# Проверяет, доступна ли Natasha в текущем окружении.
 def natasha_available() -> bool:
     return _natasha_pipeline() is not None
 
 
+# Нормализует один токен с учетом замен и стемминга.
 def normalize_token(token: str) -> str:
     token = token.lower().replace("ё", "е")
     token = TOKEN_REPLACEMENTS.get(token, token)
@@ -297,6 +308,7 @@ def normalize_token(token: str) -> str:
     return TOKEN_REPLACEMENTS.get(token, token)
 
 
+# Лемматизирует текст через Natasha или через fallback-нормализацию.
 def lemmatize_text(text: str) -> tuple[list[str], bool]:
     pipeline = _natasha_pipeline()
     if pipeline is None:
@@ -317,6 +329,7 @@ def lemmatize_text(text: str) -> tuple[list[str], bool]:
     return lemmas, True
 
 
+# Собирает текстовые поля каталога для построения словаря домена.
 def _iter_catalog_texts(products_path: Path) -> Iterable[str]:
     if not products_path.exists():
         return []
@@ -341,6 +354,7 @@ def _iter_catalog_texts(products_path: Path) -> Iterable[str]:
     return texts
 
 
+# Преобразует один товар в набор текстовых полей для индексации.
 def _product_to_texts(product: dict) -> list[str]:
     texts: list[str] = []
     for key in ("id", "name", "category", "subcategory", "purpose", "promo_reason"):
@@ -354,6 +368,7 @@ def _product_to_texts(product: dict) -> list[str]:
     return texts
 
 
+# Собирает тексты из intents.json для расширения словаря домена.
 def _iter_intent_texts(intents_path: Path) -> Iterable[str]:
     if not intents_path.exists():
         return []
@@ -373,6 +388,7 @@ def _iter_intent_texts(intents_path: Path) -> Iterable[str]:
     return texts
 
 
+# Строит общий словарь домена по каталогу, интентам и дополнительным текстам.
 def build_domain_vocabulary(
     products_path: str | Path = DEFAULT_PRODUCTS_PATH,
     intents_path: str | Path = DEFAULT_INTENTS_PATH,
@@ -383,6 +399,7 @@ def build_domain_vocabulary(
     return set(_build_domain_vocabulary_cached(str(Path(products_path)), str(Path(intents_path))))
 
 
+# Кэширует словарь домена для повторного использования.
 @lru_cache(maxsize=8)
 def _build_domain_vocabulary_cached(
     products_path: str,
@@ -391,6 +408,7 @@ def _build_domain_vocabulary_cached(
     return tuple(sorted(_build_domain_vocabulary_uncached(products_path, intents_path, ())))
 
 
+# Строит словарь домена без кэширования.
 def _build_domain_vocabulary_uncached(
     products_path: str | Path,
     intents_path: str | Path,
@@ -452,6 +470,7 @@ def _build_domain_vocabulary_uncached(
     return {token for token in vocabulary if token}
 
 
+# Исправляет отдельный токен, если он похож на слово из словаря домена.
 def correct_token(token: str, vocabulary: Iterable[str]) -> str:
     token = token.lower()
     vocabulary_set = set(vocabulary)
@@ -477,6 +496,7 @@ def correct_token(token: str, vocabulary: Iterable[str]) -> str:
     return best_match if best_distance <= max_typo_distance(token) else token
 
 
+# Исправляет опечатки во всех токенах текста.
 def correct_typos(text: str, vocabulary: Iterable[str]) -> tuple[str, dict[str, str]]:
     tokens = tokenize(text)
     corrected_tokens: list[str] = []
@@ -491,6 +511,7 @@ def correct_typos(text: str, vocabulary: Iterable[str]) -> tuple[str, dict[str, 
     return " ".join(corrected_tokens), corrections
 
 
+# Оценивает тональность текста по словарю настроений.
 def analyze_sentiment(tokens: Iterable[str]) -> tuple[str, float]:
     scores = [SENTIMENT_LEXICON[token] for token in tokens if token in SENTIMENT_LEXICON]
     if not scores:
@@ -504,21 +525,28 @@ def analyze_sentiment(tokens: Iterable[str]) -> tuple[str, float]:
     return "neutral", score
 
 
-def classify_topic(tokens: Iterable[str]) -> str:
-    token_set = set(tokens)
+# Классифицирует тему текста как доменную или разговорную.
+def classify_topic(soft_tokens: Iterable[str], catalog_tokens: Iterable[str]) -> str:
+    token_set = set(catalog_tokens)
     if not token_set:
-        return "general"
+        theme = detect_theme_from_tokens(list(soft_tokens))
+        return theme or "general"
 
     best_topic = "general"
     best_score = 0
-    for topic, keywords in TOPIC_KEYWORDS.items():
+    for topic, keywords in DOMAIN_TOPIC_KEYWORDS.items():
         score = len(token_set & keywords)
         if score > best_score:
             best_topic = topic
             best_score = score
-    return best_topic
+    if best_score > 0:
+        return best_topic
+
+    theme = detect_theme_from_tokens(list(soft_tokens))
+    return theme or "general"
 
 
+# Нормализует список лемм в мягком или каталожном режиме.
 def normalize_lemmas(lemmas: list[str], mode: str = "soft") -> list[str]:
     prepared = [TOKEN_REPLACEMENTS.get(lemma, lemma) for lemma in lemmas if lemma]
     if mode == "catalog":
@@ -526,6 +554,7 @@ def normalize_lemmas(lemmas: list[str], mode: str = "soft") -> list[str]:
     return prepared
 
 
+# Извлекает простые сущности товаров и чисел из текста.
 def extract_entities(
     text: str,
     products_path: str | Path = DEFAULT_PRODUCTS_PATH,
@@ -564,10 +593,12 @@ def extract_entities(
     return entities
 
 
+# Возвращает нормализованную строку в выбранном режиме обработки.
 def normalize_text(text: str, vocabulary: Iterable[str] | None = None, mode: str = "soft") -> str:
     return _normalize_core(text, vocabulary=vocabulary, mode=mode)[0]
 
 
+# Выполняет основную цепочку нормализации и возвращает промежуточные данные.
 def _normalize_core(
     text: str,
     vocabulary: Iterable[str] | None = None,
@@ -594,6 +625,7 @@ def _normalize_core(
     return normalized_text, corrected, corrected_tokens, normalized_tokens, corrections, natasha_used
 
 
+# Выполняет полную предобработку пользовательского текста.
 def preprocess_user_text(text: str, vocabulary: Iterable[str] | None = None) -> TextProcessingResult:
     cleaned = clean_text(text)
     original_tokens = tokenize(cleaned)
@@ -612,7 +644,7 @@ def preprocess_user_text(text: str, vocabulary: Iterable[str] | None = None) -> 
     normalized_catalog = " ".join(normalized_catalog_tokens)
 
     sentiment_label, sentiment_score = analyze_sentiment(normalized_tokens)
-    topic = classify_topic(normalized_catalog_tokens)
+    topic = classify_topic(normalized_tokens, normalized_catalog_tokens)
     entities = extract_entities(corrected)
 
     return TextProcessingResult(
@@ -634,6 +666,7 @@ def preprocess_user_text(text: str, vocabulary: Iterable[str] | None = None) -> 
     )
 
 
+# Загружает и кэширует индекс сущностей товаров для быстрого поиска.
 @lru_cache(maxsize=4)
 def _load_product_entity_index(products_path: str) -> tuple[dict, ...]:
     path = Path(products_path)

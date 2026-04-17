@@ -25,6 +25,7 @@ DEFAULT_INTENTS_PATH = Path("data/intents.json")
 DEFAULT_MODEL_PATH = Path("models/intent_model.joblib")
 
 
+# Загружает обучающую выборку интентов из intents.json.
 def load_intent_dataset(intents_path: str | Path = DEFAULT_INTENTS_PATH) -> tuple[list[str], list[str]]:
     intents_path = Path(intents_path)
     data = json.loads(intents_path.read_text(encoding="utf-8"))
@@ -41,6 +42,7 @@ def load_intent_dataset(intents_path: str | Path = DEFAULT_INTENTS_PATH) -> tupl
     return texts, labels
 
 
+# Обучает модель интентов и сохраняет ее на диск.
 def train_intent_model(
     intents_path: str | Path = DEFAULT_INTENTS_PATH,
     model_path: str | Path = DEFAULT_MODEL_PATH,

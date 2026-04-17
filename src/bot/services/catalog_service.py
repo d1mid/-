@@ -63,6 +63,7 @@ SUBCATEGORY_ALIASES = {
 }
 
 
+# Загружает каталог товаров из JSON-файла.
 def load_catalog(products_path: str | Path = DEFAULT_PRODUCTS_PATH) -> list[dict]:
     products_path = Path(products_path)
     if not products_path.exists():
@@ -71,6 +72,7 @@ def load_catalog(products_path: str | Path = DEFAULT_PRODUCTS_PATH) -> list[dict
     return data if isinstance(data, list) else data.get("products", [])
 
 
+# Загружает рекламные сценарии из JSON-файла.
 def load_ad_scenarios(ad_scenarios_path: str | Path = DEFAULT_AD_SCENARIOS_PATH) -> list[dict]:
     ad_scenarios_path = Path(ad_scenarios_path)
     if not ad_scenarios_path.exists():
@@ -79,10 +81,12 @@ def load_ad_scenarios(ad_scenarios_path: str | Path = DEFAULT_AD_SCENARIOS_PATH)
     return data.get("scenarios", [])
 
 
+# Возвращает список уникальных категорий каталога.
 def get_catalog_categories(products: list[dict]) -> list[str]:
     return sorted({product.get("category", "") for product in products if product.get("category")})
 
 
+# Ищет основную категорию каталога по пользовательскому запросу.
 def find_category_in_query(query: str) -> str | None:
     lowered = query.lower()
     normalized = normalize_text(query, mode="catalog")
@@ -94,6 +98,7 @@ def find_category_in_query(query: str) -> str | None:
     return None
 
 
+# Ищет подкатегорию каталога по пользовательскому запросу.
 def find_subcategory_in_query(query: str) -> str | None:
     lowered = query.lower()
     normalized = normalize_text(query, mode="catalog")
@@ -105,6 +110,7 @@ def find_subcategory_in_query(query: str) -> str | None:
     return None
 
 
+# Подбирает товары по категории и подкатегории, найденным в запросе.
 def find_products_by_category(query: str, products: list[dict], limit: int = 5) -> list[dict]:
     category = find_category_in_query(query)
     subcategory = find_subcategory_in_query(query)
@@ -123,11 +129,13 @@ def find_products_by_category(query: str, products: list[dict], limit: int = 5) 
     return matches[:limit] if (category or subcategory) else []
 
 
+# Возвращает список продвигаемых товаров в порядке их приоритета.
 def get_promoted_products(products: list[dict]) -> list[dict]:
     promoted = [product for product in products if product.get("is_promoted")]
     return sorted(promoted, key=lambda item: item.get("promo_priority") or 999)
 
 
+# Ищет товар по его идентификатору.
 def get_product_by_id(product_id: str, products: list[dict]) -> dict | None:
     product_id = product_id.lower()
     for product in products:
@@ -136,6 +144,7 @@ def get_product_by_id(product_id: str, products: list[dict]) -> dict | None:
     return None
 
 
+# Ищет товары по названию с учетом нормализации текста.
 def find_products_by_name(query: str, products: list[dict]) -> list[dict]:
     normalized_query = normalize_text(query, mode="catalog")
     matches: list[dict] = []
@@ -151,10 +160,12 @@ def find_products_by_name(query: str, products: list[dict]) -> list[dict]:
     return matches
 
 
+# Формирует короткую строку с названием, ценой и назначением товара.
 def format_product_brief(product: dict) -> str:
     return f"{product['name']} — {product['price_rub']} руб. {product['purpose']}"
 
 
+# Формирует расширенное текстовое описание товара.
 def format_product_details(product: dict) -> str:
     characteristics = ", ".join(product.get("characteristics", [])[:5])
     advantages = ", ".join(product.get("advantages", [])[:3])
@@ -166,6 +177,7 @@ def format_product_details(product: dict) -> str:
     )
 
 
+# Извлекает бюджет из произвольной фразы пользователя.
 def extract_budget(text: str) -> int | None:
     digits = []
     current = ""

@@ -17,6 +17,7 @@ INTENT_TO_FILTERS = {
 }
 
 
+# Проверяет, подходит ли товар под набор точных фильтров.
 def _matches_filters(product: dict, filters: dict[str, str]) -> bool:
     for key, value in filters.items():
         if product.get(key) != value:
@@ -24,6 +25,7 @@ def _matches_filters(product: dict, filters: dict[str, str]) -> bool:
     return True
 
 
+# Вычисляет простой score товара по совпадениям с запросом и бюджету.
 def _score_product(product: dict, normalized_query: str, budget: int | None) -> int:
     score = 0
     # Один общий текст удобен для простого rule-based скоринга без отдельных индексов.
@@ -55,6 +57,7 @@ def _score_product(product: dict, normalized_query: str, budget: int | None) -> 
     return score
 
 
+# Возвращает список наиболее подходящих товаров для пользовательского запроса.
 def recommend_products(
     query: str,
     products: list[dict],

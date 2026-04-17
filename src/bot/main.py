@@ -8,6 +8,7 @@ from src.bot.core.bot import PlumbingBot
 from src.bot.telegram.handler import run_telegram_bot
 
 
+# Запускает CLI-режим или Telegram-режим в зависимости от аргументов.
 def main() -> None:
     # CLI-режим оставлен как самый простой способ локальной проверки без Telegram.
     if len(sys.argv) > 1 and sys.argv[1] == "--telegram":
