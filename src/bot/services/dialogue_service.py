@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
-import json
 from functools import lru_cache
 from pathlib import Path
 import random
 
+from src.bot.services.theme_service import (
+    DEFAULT_THEME_KEYWORDS_PATH,
+    _contains_theme_token,
+    detect_theme_from_tokens,
+    get_theme_responses,
+    load_theme_config,
+)
 from src.bot.utils.text import build_domain_vocabulary, levenshtein_distance, normalize_text
 
 
 DEFAULT_DIALOGUES_PATH = Path("data/dialogues.txt")
-DEFAULT_THEME_KEYWORDS_PATH = Path("data/theme_keywords.json")
-
 GENERIC_DIALOGUE_TOKENS = {
     "а",
     "быть",
@@ -61,25 +65,12 @@ GENERIC_DIALOGUE_TOKENS = {
     "я",
 }
 
+# Загружает пары вопрос-ответ из файла dialogues.txt.
 def load_dialogue_pairs(dialogues_path: str | Path = DEFAULT_DIALOGUES_PATH) -> list[tuple[str, str]]:
     return list(_load_dialogue_pairs_cached(str(Path(dialogues_path))))
 
 
-@lru_cache(maxsize=2)
-def load_theme_config(theme_keywords_path: str | Path = DEFAULT_THEME_KEYWORDS_PATH) -> dict[str, dict[str, tuple[str, ...]]]:
-    path = Path(theme_keywords_path)
-    data = json.loads(path.read_text(encoding="utf-8"))
-    themes = data.get("themes", {})
-    config: dict[str, dict[str, tuple[str, ...]]] = {}
-    for theme_name, theme_data in themes.items():
-        # Конфигурацию сразу приводим к tuple, чтобы ее было удобно кэшировать.
-        config[theme_name] = {
-            "keywords": tuple(theme_data.get("keywords", [])),
-            "responses": tuple(theme_data.get("responses", [])),
-        }
-    return config
-
-
+# Кэширует разбор dialogues.txt в готовый список диалоговых пар.
 @lru_cache(maxsize=4)
 def _load_dialogue_pairs_cached(dialogues_path: str) -> tuple[tuple[str, str], ...]:
     dialogues_path = Path(dialogues_path)
@@ -118,6 +109,7 @@ def _load_dialogue_pairs_cached(dialogues_path: str) -> tuple[tuple[str, str], .
     return tuple(pairs)
 
 
+# Ищет лучший ответ по близкой фразе из dialogues.txt.
 def find_dialogue_answer(
     replica: str,
     dialogues_path: str | Path = DEFAULT_DIALOGUES_PATH,
@@ -160,6 +152,7 @@ def find_dialogue_answer(
     return min(answers, key=lambda item: item[0])[2]
 
 
+# Ищет тематический ответ, если подходящей близкой реплики не найдено.
 def find_thematic_dialogue_answer(
     replica: str,
     dialogues_path: str | Path = DEFAULT_DIALOGUES_PATH,
@@ -169,12 +162,11 @@ def find_thematic_dialogue_answer(
     if not normalized_replica:
         return None
 
-    theme = _detect_dialogue_theme(normalized_replica, theme_keywords_path)
+    theme = detect_theme_from_tokens(normalized_replica.split(), theme_keywords_path)
     if not theme:
         return None
 
-    theme_config = load_theme_config(theme_keywords_path)
-    answers = theme_config.get(theme, {}).get("responses") or _get_theme_answers(theme, str(Path(dialogues_path)), str(Path(theme_keywords_path)))
+    answers = get_theme_responses(theme, theme_keywords_path) or _get_theme_answers(theme, str(Path(dialogues_path)), str(Path(theme_keywords_path)))
     if not answers:
         return None
 
@@ -184,23 +176,7 @@ def find_thematic_dialogue_answer(
     return chooser.choice(list(answers))
 
 
-def _detect_dialogue_theme(
-    normalized_replica: str,
-    theme_keywords_path: str | Path = DEFAULT_THEME_KEYWORDS_PATH,
-) -> str | None:
-    tokens = normalized_replica.split()
-    best_theme = None
-    best_score = 0
-    theme_config = load_theme_config(theme_keywords_path)
-    for theme, theme_data in theme_config.items():
-        keywords = theme_data.get("keywords", ())
-        score = sum(1 for keyword in keywords if _contains_theme_token(tokens, keyword))
-        if score > best_score:
-            best_theme = theme
-            best_score = score
-    return best_theme
-
-
+# Подбирает ответы из dialogues.txt, которые относятся к заданной теме.
 @lru_cache(maxsize=64)
 def _get_theme_answers(theme: str, dialogues_path: str, theme_keywords_path: str) -> tuple[str, ...]:
     keywords = load_theme_config(theme_keywords_path).get(theme, {}).get("keywords", ())
@@ -215,16 +191,12 @@ def _get_theme_answers(theme: str, dialogues_path: str, theme_keywords_path: str
             seen_answers.add(answer)
             answers.append(answer)
     return tuple(answers)
-
-
-def _contains_theme_token(tokens: list[str], keyword: str) -> bool:
-    return any(token == keyword or (len(keyword) >= 6 and token.startswith(keyword)) for token in tokens)
-
-
+# Отбрасывает слишком общие слова, чтобы поиск работал по значимым токенам.
 def _meaningful_tokens(text: str) -> set[str]:
     return {token for token in text.split() if token and token not in GENERIC_DIALOGUE_TOKENS}
 
 
+# Возвращает индексы диалоговых пар-кандидатов по набору токенов запроса.
 @lru_cache(maxsize=128)
 def _get_dialogue_candidate_ids(tokens: tuple[str, ...], dialogues_path: str) -> tuple[int, ...]:
     if not tokens:
@@ -237,6 +209,7 @@ def _get_dialogue_candidate_ids(tokens: tuple[str, ...], dialogues_path: str) ->
     return tuple(sorted(candidate_ids))
 
 
+# Строит и кэширует индекс dialogues.txt по значимым словам.
 @lru_cache(maxsize=4)
 def _load_dialogue_index_cached(dialogues_path: str) -> dict[str, tuple[int, ...]]:
     pairs = _load_dialogue_pairs_cached(dialogues_path)
